@@ -31,18 +31,16 @@ except Exception as e:
 
 # --- TITRE DE L'APPLICATION ---
 st.title("📚 Le Biblio Club")
-st.markdown("### Bienvenue dans votre bibliothèque partagée")
+st.markdown("##### Votre bibliothèque partagée par DJA’WEB")
 
-# --- MENU DE SÉLECTION DU MEMBRE (ADAPTÉ À 'PRÉNOM') ---
+# --- MENU DE SÉLECTION DU MEMBRE ---
 st.write("---")
-
-# Vérification de la colonne Nom ou Prénom
 if 'Prénom' in df_membres.columns:
     liste_membres = df_membres['Prénom'].tolist()
 elif 'Nom' in df_membres.columns:
     liste_membres = df_membres['Nom'].tolist()
 else:
-    st.error("Je ne trouve pas de colonne 'Prénom' ou 'Nom' dans l'onglet Membres.")
+    st.error("Colonne 'Prénom' ou 'Nom' introuvable dans le Sheet.")
     st.stop()
 
 col1, col2 = st.columns([1, 2])
@@ -55,52 +53,70 @@ st.info(f"Ravi de vous voir, **{utilisateur}** ! 👋")
 st.write("---")
 
 # --- NAVIGATION PAR ONGLETS ---
-onglet1, onglet2, onglet3 = st.tabs(["📖 Bibliothèque", "➕ Ajouter un livre", "📤 Import Excel"])
+onglet1, onglet2, onglet3 = st.tabs(["📖 Bibliothèque", "➕ Ajouter", "📤 Import"])
 
 with onglet1:
-    st.subheader("Les livres du Club")
+    st.subheader("📖 Les pépites du Club")
+    
     if not df_livres.empty:
-        # On affiche le tableau proprement
-        st.dataframe(df_livres, use_container_width=True, hide_index=True)
+        # Inverser l'ordre pour voir les derniers ajouts en haut
+        for index, row in df_livres.iloc[::-1].iterrows():
+            with st.container():
+                c1, c2 = st.columns([1, 5])
+                with c1:
+                    st.write("") # Petit espacement
+                    st.title("📕")
+                with c2:
+                    st.markdown(f"### {row['Titre']}")
+                    st.markdown(f"**Auteur :** {row.get('Auteur', 'Inconnu')}")
+                    
+                    # Design de l'avis
+                    avis_texte = row.get('Avis_delire')
+                    if avis_texte:
+                        st.success(f"💬 **L'avis de {row.get('Membre', 'un membre')}** :  \n{avis_texte}")
+                    
+                    st.caption(f"Ajouté par {row.get('Membre', 'le club')}")
+                st.write("---")
     else:
         st.info("La bibliothèque est vide. Soyez le premier à ajouter un livre !")
 
 with onglet2:
-    st.subheader("Ajouter une pépite")
+    st.subheader("➕ Ajouter un nouveau livre")
     with st.form("ajout_livre", clear_on_submit=True):
-        titre = st.text_input("Titre du livre")
-        auteur = st.text_input("Auteur")
-        avis = st.text_area("Ton avis / Biblio-Score (ex: 📚📚📚)")
-        submit = st.form_submit_button("Ajouter au club")
+        t = st.text_input("Titre du livre")
+        a = st.text_input("Auteur")
+        av = st.text_area("Ton avis et ton Biblio-Score (ex: 📚📚📚)")
+        submit = st.form_submit_button("Partager avec le club")
         
         if submit:
-            if titre:
-                new_row = [titre, auteur, utilisateur, avis]
-                sheet_livres.append_row(new_row)
-                st.success(f"Bravo {utilisateur}, '{titre}' a été ajouté !")
+            if t:
+                # IMPORTANT : L'ordre ici doit correspondre aux colonnes de ton Sheet Livres
+                # [Titre, Auteur, Membre, Avis_delire]
+                sheet_livres.append_row([t, a, utilisateur, av])
+                st.success(f"Parfait ! '{t}' a rejoint la collection.")
                 st.balloons()
             else:
-                st.error("Le titre est obligatoire !")
+                st.error("Le titre est indispensable !")
 
 with onglet3:
-    st.subheader("Importation massive")
-    st.write("Format requis : Titre, Auteur, Avis_delire")
+    st.subheader("📤 Importation groupée")
+    st.write("Envoyez un fichier Excel avec les colonnes : **Titre**, **Auteur**, **Avis_delire**")
     
-    uploaded_file = st.file_uploader("Choisir un fichier Excel", type="xlsx")
+    uploaded_file = st.file_uploader("Fichier Excel", type="xlsx")
     if uploaded_file:
         try:
             df_import = pd.read_excel(uploaded_file)
-            if st.button("🚀 Confirmer l'import"):
+            if st.button("🚀 Lancer l'importation"):
                 for _, row in df_import.iterrows():
                     sheet_livres.append_row([
-                        row.get('Titre', 'Sans titre'), 
-                        row.get('Auteur', ''), 
+                        str(row.get('Titre', 'Sans titre')), 
+                        str(row.get('Auteur', '')), 
                         utilisateur, 
-                        row.get('Avis_delire', '')
+                        str(row.get('Avis_delire', ''))
                     ])
-                st.success("Importation réussie ! Rafraîchissez l'onglet Bibliothèque.")
+                st.success("Import terminé ! Allez voir l'onglet Bibliothèque.")
         except Exception as e:
-            st.error(f"Erreur lors de l'import : {e}")
+            st.error(f"Erreur : {e}")
 
 # --- PIED DE PAGE ---
 st.write("")
