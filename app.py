@@ -11,7 +11,7 @@ def get_gspread_client():
     # On récupère le dictionnaire des secrets
     creds_dict = st.secrets["gcp_service_account"].to_dict()
     
-    # Nettoyage crucial de la clé privée pour éviter les erreurs PEM
+    # Nettoyage de la clé privée
     if "private_key" in creds_dict:
         creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
     
@@ -30,7 +30,7 @@ try:
     df_membres = pd.DataFrame(sheet_membres.get_all_records())
     df_livres = pd.DataFrame(sheet_livres.get_all_records())
 except Exception as e:
-    st.error(#FF4B4B["Erreur de connexion : Vérifiez vos Secrets Streamlit et le nom du fichier Google Sheet."])
+    st.error(f"Erreur de connexion : {e}")
     st.stop()
 
 # --- TITRE DE L'APPLICATION ---
@@ -87,7 +87,6 @@ with onglet3:
             df_import = pd.read_excel(uploaded_file)
             if st.button("🚀 Confirmer l'import"):
                 for _, row in df_import.iterrows():
-                    # On ajoute le nom de l'utilisateur actuel pour chaque livre importé
                     sheet_livres.append_row([row['Titre'], row.get('Auteur', ''), utilisateur, row.get('Avis_delire', '')])
                 st.success("Importation réussie !")
         except Exception as e:
