@@ -21,41 +21,34 @@ try:
     spreadsheet = client.open("BiblioClub_Data") 
     sheet_membres = spreadsheet.worksheet("Membres")
     sheet_livres = spreadsheet.worksheet("Livres")
-    
-    # Lecture des données
     df_membres = pd.DataFrame(sheet_membres.get_all_records())
     df_livres = pd.DataFrame(sheet_livres.get_all_records())
-    
-    # NETTOYAGE DES COLONNES (supprime espaces et gère les accents)
     df_livres.columns = [c.strip() for c in df_livres.columns]
     df_membres.columns = [c.strip() for c in df_membres.columns]
 except Exception as e:
-    st.error(f"Erreur de connexion : {e}")
+    st.error(f"Erreur : {e}")
     st.stop()
 
-# --- DÉTECTION INTELLIGENTE DES COLONNES ---
-# On cherche les colonnes même si l'orthographe varie un peu
-def find_col(df, possible_names):
-    for name in possible_names:
-        if name in df.columns: return name
-    return df.columns[0] # Par défaut la première si rien n'est trouvé
+# --- DÉTECTION COLONNES ---
+def find_col(df, names):
+    for n in names:
+        if n in df.columns: return n
+    return df.columns[0]
 
-c_titre = find_col(df_livres, ["Titre", "TITRE"])
-c_auteur = find_col(df_livres, ["Auteur", "AUTEUR"])
-c_proprio = find_col(df_livres, ["Maître", "Maitre", "Propriétaire", "Maitre"])
-c_statut = find_col(df_livres, ["Statut", "STATUT"])
-c_emprunteur = find_col(df_livres, ["Squatteur", "SQUATTEUR", "Emprunteur"])
-c_avis = find_col(df_livres, ["Avis_Delire", "Avis_delire", "Avis"])
+c_titre = find_col(df_livres, ["Titre"])
+c_auteur = find_col(df_livres, ["Auteur"])
+c_proprio = find_col(df_livres, ["Maître", "Maitre", "Membre"])
+c_statut = find_col(df_livres, ["Statut"])
+c_emprunteur = find_col(df_livres, ["Squatteur", "Emprunteur"])
+c_avis = find_col(df_livres, ["Avis_Delire", "Avis"])
+col_p = find_col(df_membres, ["Prénom", "Nom"])
 
-col_p = find_col(df_membres, ["Prénom", "Prenom", "Nom"])
-liste_membres = df_membres[col_p].tolist()
-
-def envoyer_whatsapp(telephone, message):
-    return f"https://wa.me/{str(telephone).replace(' ', '')}?text={urllib.parse.quote(message)}"
+def envoyer_wa(tel, msg):
+    return f"https://wa.me/{str(tel).replace(' ', '')}?text={urllib.parse.quote(msg)}"
 
 # --- INTERFACE ---
 st.title("📚 Le Biblio Club")
-utilisateur = st.selectbox("👤 Qui êtes-vous ?", liste_membres)
+utilisateur = st.selectbox("👤 Qui êtes-vous ?", df_membres[col_p].tolist())
 infos_user = df_membres[df_membres[col_p] == utilisateur].iloc[0]
 
 st.write("---")
@@ -64,8 +57,8 @@ onglets = st.tabs(["📖 Bibliothèque", "🤝 Emprunts", "👤 Mon Profil", "�
 # --- 1. BIBLIOTHÈQUE ---
 with onglets[0]:
     for idx, row in df_livres.iloc[::-1].iterrows():
-        raw_s = str(row.get(c_statut, 'Libre')).strip()
-        statut = raw_s if raw_s != "" else "Libre"
+        s = str(row.get(c_statut, 'Libre')).strip()
+        statut = s if s != "" else "Libre"
         color = "green" if statut == "Libre" else "orange" if statut == "Demandé" else "red"
         
         with st.container():
@@ -74,19 +67,13 @@ with onglets[0]:
             with c2:
                 st.markdown(f"### {row[c_titre]} :{color}[ ({statut})]")
                 st.write(f"**Auteur :** {row[c_auteur]} | **Proprio :** {row[c_proprio]}")
-                
-                if row.get(c_avis):
-                    st.success(f"💬 **Avis :** \n{row[c_avis]}")
+                if row.get(c_avis): st.success(f"💬 {row[c_avis]}")
                 
                 if statut == "Libre" and str(row[c_proprio]) != utilisateur:
                     if st.button(f"Demander ce livre", key=f"req_{idx}"):
-                        # On cherche l'index de la colonne Statut (H) et Squatteur (E)
-                        idx_statut = list(df_livres.columns).index(c_statut) + 1
-                        idx_squat = list(df_livres.columns).index(c_emprunteur) + 1
-                        sheet_livres.update_cell(idx + 2, idx_statut, "Demandé")
-                        sheet_livres.update_cell(idx + 2, idx_squat, utilisateur)
-                        st.success("Demande envoyée !")
-                        st.rerun()
+                        sheet_livres.update_cell(idx + 2, list(df_livres.columns).index(c_statut)+1, "Demandé")
+                        sheet_livres.update_cell(idx + 2, list(df_livres.columns).index(c_emprunteur)+1, utilisateur)
+                        st.success("Demande envoyée !"); st.rerun()
             st.write("---")
 
 # --- 2. EMPRUNTS ---
@@ -95,32 +82,39 @@ with onglets[1]:
     mask = df_livres[c_statut].isin(['Demandé', 'Emprunté'])
     if not df_livres[mask].empty:
         st.dataframe(df_livres[mask][[c_titre, c_proprio, c_emprunteur, c_statut]], hide_index=True)
-    else:
-        st.info("Tous les livres sont chez leurs maîtres !")
+    else: st.info("Tout est en rayon !")
 
-# --- 3. MON PROFIL ---
+# --- 3. MON PROFIL (LOGIQUE DE DÉCISION) ---
 with onglets[2]:
     st.subheader(f"Espace de {utilisateur}")
     mes_livres = df_livres[df_livres[c_proprio] == utilisateur]
+    
     if not mes_livres.empty:
         for idx, row in mes_livres.iterrows():
             st.write(f"📙 **{row[c_titre]}**")
-            s = str(row.get(c_statut, ''))
-            if s == "Demandé":
-                dem = row.get(c_emprunteur)
-                st.warning(f"🔔 {dem} veut ce livre")
-                if st.button(f"✅ Valider prêt pour {dem}", key=f"ok_{idx}"):
-                    idx_statut = list(df_livres.columns).index(c_statut) + 1
-                    sheet_livres.update_cell(idx + 2, idx_statut, "Emprunté")
-                    tel_d = df_membres[df_membres[col_p] == dem].iloc[0].get('Téléphone', '')
-                    msg = f"Hello {dem} ! C'est {utilisateur}. Prêt OK pour '{row[c_titre]}' ! Retrait : {infos_user.get('Infos_Retrait', 'Contacte-moi !')}"
-                    st.link_button("📱 WhatsApp", envoyer_whatsapp(tel_d, msg))
-            elif s == "Emprunté":
-                if st.button(f"🔄 Rendu", key=f"back_{idx}"):
-                    idx_statut = list(df_livres.columns).index(c_statut) + 1
-                    idx_squat = list(df_livres.columns).index(c_emprunteur) + 1
-                    sheet_livres.update_cell(idx + 2, idx_statut, "Libre")
-                    sheet_livres.update_cell(idx + 2, idx_squat, "")
+            statut_actuel = str(row.get(c_statut, ''))
+            
+            if statut_actuel == "Demandé":
+                demandeur = row.get(c_emprunteur)
+                st.warning(f"🔔 {demandeur} attend votre réponse pour ce livre.")
+                
+                col_b1, col_b2 = st.columns(2)
+                with col_b1:
+                    if st.button(f"✅ Valider le prêt", key=f"ok_{idx}"):
+                        sheet_livres.update_cell(idx + 2, list(df_livres.columns).index(c_statut)+1, "Emprunté")
+                        tel_d = df_membres[df_membres[col_p] == demandeur].iloc[0].get('Téléphone', '')
+                        msg = f"Hello {demandeur} ! C'est {utilisateur}. Prêt OK pour '{row[c_titre]}' ! Retrait : {infos_user.get('Coordonnees', 'Contacte-moi !')}"
+                        st.link_button("📱 WhatsApp de confirmation", envoyer_wa(tel_d, msg))
+                with col_b2:
+                    if st.button(f"❌ Refuser", key=f"no_{idx}"):
+                        sheet_livres.update_cell(idx + 2, list(df_livres.columns).index(c_statut)+1, "Libre")
+                        sheet_livres.update_cell(idx + 2, list(df_livres.columns).index(c_emprunteur)+1, "")
+                        st.rerun()
+            
+            elif statut_actuel == "Emprunté":
+                if st.button(f"🔄 Livre rendu / Clôturer", key=f"end_{idx}"):
+                    sheet_livres.update_cell(idx + 2, list(df_livres.columns).index(c_statut)+1, "Libre")
+                    sheet_livres.update_cell(idx + 2, list(df_livres.columns).index(c_emprunteur)+1, "")
                     st.rerun()
             st.write("---")
 
