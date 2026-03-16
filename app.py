@@ -42,7 +42,7 @@ def envoyer_wa(tel, msg):
     return f"https://wa.me/{str(tel).replace(' ', '')}?text={urllib.parse.quote(msg)}"
 
 # --- INTERFACE PRINCIPALE ---
-st.title("📚 Le Biblio Club")
+st.title("📚 La boîte à livres de Méli-Mélo")
 utilisateur = st.selectbox("👤 Qui êtes-vous ?", df_membres[col_p].tolist())
 infos_user = df_membres[df_membres[col_p] == utilisateur].iloc[0]
 
