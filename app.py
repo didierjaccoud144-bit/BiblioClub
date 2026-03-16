@@ -8,10 +8,7 @@ st.set_page_config(page_title="Biblio Club", page_icon="📚", layout="centered"
 
 # --- CONNEXION SÉCURISÉE À GOOGLE SHEETS ---
 def get_gspread_client():
-    # On récupère le dictionnaire des secrets
     creds_dict = st.secrets["gcp_service_account"].to_dict()
-    
-    # Nettoyage de la clé privée
     if "private_key" in creds_dict:
         creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
     
@@ -22,7 +19,6 @@ def get_gspread_client():
 # --- CHARGEMENT DES DONNÉES ---
 try:
     client = get_gspread_client()
-    # Utilise le nom exact de ton fichier Google Sheet
     spreadsheet = client.open("BiblioClub_Data") 
     sheet_membres = spreadsheet.worksheet("Membres")
     sheet_livres = spreadsheet.worksheet("Livres")
@@ -37,9 +33,17 @@ except Exception as e:
 st.title("📚 Le Biblio Club")
 st.markdown("### Bienvenue dans votre bibliothèque partagée")
 
-# --- MENU DE SÉLECTION DU MEMBRE (VISIBLE SUR MOBILE) ---
+# --- MENU DE SÉLECTION DU MEMBRE (ADAPTÉ À 'PRÉNOM') ---
 st.write("---")
-liste_membres = df_membres['Nom'].tolist()
+
+# Vérification de la colonne Nom ou Prénom
+if 'Prénom' in df_membres.columns:
+    liste_membres = df_membres['Prénom'].tolist()
+elif 'Nom' in df_membres.columns:
+    liste_membres = df_membres['Nom'].tolist()
+else:
+    st.error("Je ne trouve pas de colonne 'Prénom' ou 'Nom' dans l'onglet Membres.")
+    st.stop()
 
 col1, col2 = st.columns([1, 2])
 with col1:
@@ -56,9 +60,10 @@ onglet1, onglet2, onglet3 = st.tabs(["📖 Bibliothèque", "➕ Ajouter un livre
 with onglet1:
     st.subheader("Les livres du Club")
     if not df_livres.empty:
+        # On affiche le tableau proprement
         st.dataframe(df_livres, use_container_width=True, hide_index=True)
     else:
-        st.write("La bibliothèque est vide pour le moment.")
+        st.info("La bibliothèque est vide. Soyez le premier à ajouter un livre !")
 
 with onglet2:
     st.subheader("Ajouter une pépite")
@@ -79,7 +84,7 @@ with onglet2:
 
 with onglet3:
     st.subheader("Importation massive")
-    st.write("Utilisez un fichier Excel (.xlsx) avec les colonnes : Titre, Auteur, Avis_delire")
+    st.write("Format requis : Titre, Auteur, Avis_delire")
     
     uploaded_file = st.file_uploader("Choisir un fichier Excel", type="xlsx")
     if uploaded_file:
@@ -87,8 +92,13 @@ with onglet3:
             df_import = pd.read_excel(uploaded_file)
             if st.button("🚀 Confirmer l'import"):
                 for _, row in df_import.iterrows():
-                    sheet_livres.append_row([row['Titre'], row.get('Auteur', ''), utilisateur, row.get('Avis_delire', '')])
-                st.success("Importation réussie !")
+                    sheet_livres.append_row([
+                        row.get('Titre', 'Sans titre'), 
+                        row.get('Auteur', ''), 
+                        utilisateur, 
+                        row.get('Avis_delire', '')
+                    ])
+                st.success("Importation réussie ! Rafraîchissez l'onglet Bibliothèque.")
         except Exception as e:
             st.error(f"Erreur lors de l'import : {e}")
 
