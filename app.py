@@ -42,10 +42,13 @@ infos_user = df_membres[df_membres[col_p] == utilisateur].iloc[0]
 st.write("---")
 onglets = st.tabs(["📖 Bibliothèque", "🤝 Emprunts", "👤 Mon Profil", "➕ Ajouter", "📤 Import"])
 
-# --- 1. BIBLIOTHÈQUE (AVEC BOUTON DEMANDER) ---
+# --- 1. BIBLIOTHÈQUE ---
 with onglets[0]:
     for idx, row in df_livres.iloc[::-1].iterrows():
-        statut = str(row.get('Statut', 'Libre'))
+        # Si le statut est vide ou nul, on force "Libre"
+        statut_raw = str(row.get('Statut', '')).strip()
+        statut = statut_raw if statut_raw != "" else "Libre"
+        
         color = "green" if statut == "Libre" else "orange" if statut == "Demandé" else "red"
         
         with st.container():
@@ -58,53 +61,46 @@ with onglets[0]:
                 if row.get('Avis_delire'):
                     st.success(f"💬 **Avis :** {row['Avis_delire']}")
                 
-                # BOUTON DEMANDER
-                if statut == "Libre" and row.get(col_m) != utilisateur:
+                # LE BOUTON APPARAÎT SI LIBRE ET PAS MON LIVRE
+                if statut == "Libre" and str(row.get(col_m)) != utilisateur:
                     if st.button(f"Demander ce livre", key=f"req_{idx}"):
-                        # Mise à jour dans Google Sheets (Ligne idx+2 car index 0 = ligne 2)
                         sheet_livres.update_cell(idx + 2, 5, "Demandé")
                         sheet_livres.update_cell(idx + 2, 6, utilisateur)
-                        st.success("Demande envoyée ! Le propriétaire la verra sur son profil.")
+                        st.success("Demande enregistrée ! Va voir dans 'Emprunts'.")
                         st.rerun()
             st.write("---")
 
-# --- 2. EMPRUNTS ---
+# --- LES AUTRES ONGLETS RESTENT IDENTIQUES ---
 with onglets[1]:
     st.subheader("🤝 Livres en mouvement")
     mask = df_livres['Statut'].isin(['Demandé', 'Emprunté'])
     if not df_livres[mask].empty:
         st.table(df_livres[mask][['Titre', col_m, 'Emprunteur', 'Statut']])
     else:
-        st.info("Rien à signaler !")
+        st.info("Tout est en rayon !")
 
-# --- 3. MON PROFIL (GESTION DES DEMANDES) ---
 with onglets[2]:
     st.subheader(f"Espace de {utilisateur}")
     mes_livres = df_livres[df_livres[col_m] == utilisateur]
-    
     if not mes_livres.empty:
         for idx, row in mes_livres.iterrows():
             st.write(f"📙 **{row['Titre']}**")
-            statut_actuel = row.get('Statut')
-            
-            if statut_actuel == "Demandé":
+            s = str(row.get('Statut', ''))
+            if s == "Demandé":
                 demandeur = row.get('Emprunteur')
-                st.warning(f"🔔 {demandeur} souhaite emprunter ce livre")
-                
-                if st.button(f"✅ Accepter la demande de {demandeur}", key=f"ok_{idx}"):
+                st.warning(f"🔔 {demandeur} le veut")
+                if st.button(f"✅ Valider prêt pour {demandeur}", key=f"ok_{idx}"):
                     sheet_livres.update_cell(idx + 2, 5, "Emprunté")
                     tel_d = df_membres[df_membres[col_p] == demandeur].iloc[0].get('Téléphone', '')
                     msg = f"Hello {demandeur} ! C'est {utilisateur}. Ok pour '{row['Titre']}' ! Retrait : {infos_user.get('Infos_Retrait', 'Contacte-moi !')}"
-                    st.link_button("📱 Envoyer confirmation WhatsApp", envoyer_whatsapp(tel_d, msg))
-            
-            elif statut_actuel == "Emprunté":
-                if st.button(f"🔄 Marquer comme rendu", key=f"back_{idx}"):
+                    st.link_button("📱 WhatsApp de confirmation", envoyer_whatsapp(tel_d, msg))
+            elif s == "Emprunté":
+                if st.button(f"🔄 Rendu", key=f"back_{idx}"):
                     sheet_livres.update_cell(idx + 2, 5, "Libre")
                     sheet_livres.update_cell(idx + 2, 6, "")
                     st.rerun()
             st.write("---")
 
-# --- 4 & 5 (AJOUT / IMPORT) ---
 with onglets[3]:
     with st.form("add_vfinal"):
         t, a = st.text_input("Titre"), st.text_input("Auteur")
