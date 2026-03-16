@@ -45,15 +45,18 @@ st.title("📚 Le Biblio Club")
 utilisateur = st.selectbox("👤 Qui êtes-vous ?", df_membres[col_p].tolist())
 infos_user = df_membres[df_membres[col_p] == utilisateur].iloc[0]
 
-st.write("---")
-
-# --- LOGIQUE DE L'AVATAR ANIMÉ ---
-# On compte les demandes reçues pour l'utilisateur actuel
+# --- LOGIQUE D'ALERTE ET BANNIÈRE FLASH ---
 mes_livres_p = df_livres[df_livres[c_proprio].astype(str).str.strip() == utilisateur.strip()]
 nb_demandes = len(mes_livres_p[mes_livres_p[c_statut] == "Demandé"])
 
-# Si nb_demandes > 0, l'icône devient le bonhomme qui fait coucou
-icon_profil = "🙋 Mon Profil" if nb_demandes > 0 else "👤 Mon Profil"
+if nb_demandes > 0:
+    icon_profil = f"🔔 ({nb_demandes}) DEMANDE 🙋"
+    # La bannière flash qui s'anime en haut
+    st.toast(f"Salut {utilisateur} ! Tu as {nb_demandes} demande(s) en attente sur ton profil. 📢", icon="🙋")
+else:
+    icon_profil = "👤 Mon Profil"
+
+st.write("---")
 
 # --- NAVIGATION ---
 menu = ["📖 Bibliothèque", "🤝 Emprunts", icon_profil, "➕ Ajouter", "📤 Import"]
@@ -84,43 +87,52 @@ with onglets[0]:
 
 # --- 2. EMPRUNTS ---
 with onglets[1]:
+    st.subheader("🤝 Livres en mouvement")
     mask = df_livres[c_statut].isin(['Demandé', 'Emprunté'])
     if not df_livres[mask].empty:
         st.table(df_livres[mask][[c_titre, c_proprio, c_squat, c_statut]])
-    else: st.info("Rien en mouvement.")
+    else: st.info("Tous les livres sont chez leurs maîtres.")
 
-# --- 3. MON PROFIL (AVEC LOGIQUE DE DÉCISION ET SUIVI) ---
+# --- 3. MON PROFIL ---
 with onglets[2]:
-    # --- PARTIE 1 : DEMANDES REÇUES (PROPRIO) ---
-    st.subheader("🔔 Demandes sur mes livres")
-    # On réutilise le compte fait pour l'icône
-    demandes_recues = mes_livres_p[mes_livres_p[c_statut] == "Demandé"]
+    st.subheader(f"Espace de {utilisateur}")
     
+    # Demandes reçues
+    demandes_recues = mes_livres_p[mes_livres_p[c_statut] == "Demandé"]
     if not demandes_recues.empty:
-        st.warning(f"Vous avez {nb_demandes} demande(s) en attente !")
+        st.warning(f"Vous avez {len(demandes_recues)} demande(s) à traiter")
         for idx, row in demandes_recues.iterrows():
             demandeur = row.get(c_squat)
-            st.write(f"**{demandeur}** veut emprunter **{row[c_titre]}**")
+            st.write(f"👉 **{demandeur}** veut emprunter **{row[c_titre]}**")
             cb1, cb2 = st.columns(2)
             with cb1:
                 if st.button("✅ Accepter", key=f"ok_{idx}"):
                     sheet_livres.update_cell(idx + 2, list(df_livres.columns).index(c_statut)+1, "Emprunté")
                     tel_d = df_membres[df_membres[col_p] == demandeur].iloc[0].get('Téléphone', '')
                     msg = f"Hello {demandeur} ! C'est {utilisateur}. Ton prêt pour '{row[c_titre]}' est validé ! On s'organise pour le retrait ? 😊"
-                    st.link_button("📱 Prévenir par WhatsApp", envoyer_wa(tel_d, msg))
+                    st.link_button("📱 WhatsApp", envoyer_wa(tel_d, msg))
             with cb2:
                 if st.button("❌ Refuser", key=f"no_{idx}"):
                     sheet_livres.update_cell(idx + 2, list(df_livres.columns).index(c_statut)+1, "Libre")
                     sheet_livres.update_cell(idx + 2, list(df_livres.columns).index(c_squat)+1, "")
                     tel_d = df_membres[df_membres[col_p] == demandeur].iloc[0].get('Téléphone', '')
                     msg_refus = f"Hello {demandeur}, c'est {utilisateur}. Désolé, je ne peux pas te prêter '{row[c_titre]}' pour le moment. À bientôt !"
-                    st.link_button("📱 Prévenir du refus (WA)", envoyer_wa(tel_d, msg_refus))
-    else:
-        st.write("Pas de demande en attente.")
+                    st.link_button("📱 Prévenir par WA", envoyer_wa(tel_d, msg_refus))
+            st.write("---")
     
-    st.write("---")
-    
-    # --- PARTIE 2 : MES DEMANDES ENVOYÉES (DEMANDEUR) ---
+    # Livres actuellement prêtés
+    livres_pretes = mes_livres_p[mes_livres_p[c_statut] == "Emprunté"]
+    if not livres_pretes.empty:
+        st.subheader("📚 Mes livres actuellement prêtés")
+        for idx, row in livres_pretes.iterrows():
+            st.write(f"🤝 **{row[c_titre]}** est chez {row[c_squat]}")
+            if st.button(f"🔄 Marquer comme rendu", key=f"ret_{idx}"):
+                sheet_livres.update_cell(idx + 2, list(df_livres.columns).index(c_statut)+1, "Libre")
+                sheet_livres.update_cell(idx + 2, list(df_livres.columns).index(c_squat)+1, "")
+                st.rerun()
+            st.write("---")
+
+    # Mes demandes envoyées
     st.subheader("📤 Mes demandes envoyées")
     mes_demandes = df_livres[df_livres[c_squat].astype(str).str.strip() == utilisateur.strip()]
     if not mes_demandes.empty:
@@ -128,10 +140,9 @@ with onglets[2]:
             s_envoi = row[c_statut]
             icon_s = "⏳" if s_envoi == "Demandé" else "✅"
             st.write(f"{icon_s} **{row[c_titre]}** (chez {row[c_proprio]}) - Statut : {s_envoi}")
-    else:
-        st.write("Vous n'avez aucune demande en cours.")
+    else: st.write("Aucune demande en cours.")
 
-# --- RESTE DU CODE (AJOUT, IMPORT, ADMIN) ---
+# --- 4 & 5 (AJOUT/IMPORT) ---
 with onglets[3]:
     with st.form("add"):
         t, a = st.text_input("Titre"), st.text_input("Auteur")
@@ -148,12 +159,14 @@ with onglets[4]:
             sheet_livres.append_row(["", r['Titre'], r.get('Auteur',''), utilisateur, "", "", "", "Libre"])
         st.success("Fait !"); st.rerun()
 
+# --- 6. ADMIN ---
 if utilisateur in ["Didier", "Amélie"]:
     with onglets[5]:
         st.subheader("⚙️ Admin")
         with st.form("mbr"):
-            p, t, c = st.text_input("Prénom"), st.text_input("Tel"), st.text_area("Infos")
+            p, t, c = st.text_input("Prénom"), st.text_input("Tel"), st.text_area("Infos Retrait")
             if st.form_submit_button("Ajouter membre"):
-                sheet_membres.append_row([p, t, c]); st.success("OK"); st.rerun()
+                sheet_membres.append_row([p, t, c]); st.success("Membre ajouté !"); st.rerun()
 
+st.write("---")
 st.caption("Une création DJA’WEB avec l’aide de Gemini IA")
