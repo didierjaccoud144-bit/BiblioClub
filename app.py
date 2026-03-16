@@ -3,6 +3,7 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 import urllib.parse
+import io
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Biblio Club", page_icon="📚", layout="centered")
@@ -51,8 +52,7 @@ nb_demandes = len(mes_livres_p[mes_livres_p[c_statut] == "Demandé"])
 
 if nb_demandes > 0:
     icon_profil = f"🔔 ({nb_demandes}) DEMANDE 🙋"
-    # La bannière flash qui s'anime en haut
-    st.toast(f"Salut {utilisateur} ! Tu as {nb_demandes} demande(s) en attente sur ton profil. 📢", icon="🙋")
+    st.toast(f"Salut {utilisateur} ! Tu as {nb_demandes} demande(s) en attente. 📢", icon="🙋")
 else:
     icon_profil = "👤 Mon Profil"
 
@@ -96,53 +96,48 @@ with onglets[1]:
 # --- 3. MON PROFIL ---
 with onglets[2]:
     st.subheader(f"Espace de {utilisateur}")
-    
-    # Demandes reçues
     demandes_recues = mes_livres_p[mes_livres_p[c_statut] == "Demandé"]
     if not demandes_recues.empty:
         st.warning(f"Vous avez {len(demandes_recues)} demande(s) à traiter")
         for idx, row in demandes_recues.iterrows():
             demandeur = row.get(c_squat)
-            st.write(f"👉 **{demandeur}** veut emprunter **{row[c_titre]}**")
+            st.write(f"👉 **{demandeur}** veut **{row[c_titre]}**")
             cb1, cb2 = st.columns(2)
             with cb1:
                 if st.button("✅ Accepter", key=f"ok_{idx}"):
                     sheet_livres.update_cell(idx + 2, list(df_livres.columns).index(c_statut)+1, "Emprunté")
                     tel_d = df_membres[df_membres[col_p] == demandeur].iloc[0].get('Téléphone', '')
-                    msg = f"Hello {demandeur} ! C'est {utilisateur}. Ton prêt pour '{row[c_titre]}' est validé ! On s'organise pour le retrait ? 😊"
+                    msg = f"Hello {demandeur} ! C'est {utilisateur}. Ton prêt pour '{row[c_titre]}' est OK ! 😊"
                     st.link_button("📱 WhatsApp", envoyer_wa(tel_d, msg))
             with cb2:
                 if st.button("❌ Refuser", key=f"no_{idx}"):
                     sheet_livres.update_cell(idx + 2, list(df_livres.columns).index(c_statut)+1, "Libre")
                     sheet_livres.update_cell(idx + 2, list(df_livres.columns).index(c_squat)+1, "")
                     tel_d = df_membres[df_membres[col_p] == demandeur].iloc[0].get('Téléphone', '')
-                    msg_refus = f"Hello {demandeur}, c'est {utilisateur}. Désolé, je ne peux pas te prêter '{row[c_titre]}' pour le moment. À bientôt !"
-                    st.link_button("📱 Prévenir par WA", envoyer_wa(tel_d, msg_refus))
+                    msg_ref = f"Désolé {demandeur}, je ne peux pas prêter '{row[c_titre]}' pour le moment."
+                    st.link_button("📱 Prévenir WA", envoyer_wa(tel_d, msg_ref))
             st.write("---")
     
-    # Livres actuellement prêtés
     livres_pretes = mes_livres_p[mes_livres_p[c_statut] == "Emprunté"]
     if not livres_pretes.empty:
-        st.subheader("📚 Mes livres actuellement prêtés")
+        st.subheader("📚 Mes livres prêtés")
         for idx, row in livres_pretes.iterrows():
             st.write(f"🤝 **{row[c_titre]}** est chez {row[c_squat]}")
-            if st.button(f"🔄 Marquer comme rendu", key=f"ret_{idx}"):
+            if st.button(f"🔄 Rendu", key=f"ret_{idx}"):
                 sheet_livres.update_cell(idx + 2, list(df_livres.columns).index(c_statut)+1, "Libre")
                 sheet_livres.update_cell(idx + 2, list(df_livres.columns).index(c_squat)+1, "")
                 st.rerun()
             st.write("---")
 
-    # Mes demandes envoyées
     st.subheader("📤 Mes demandes envoyées")
     mes_demandes = df_livres[df_livres[c_squat].astype(str).str.strip() == utilisateur.strip()]
     if not mes_demandes.empty:
         for _, row in mes_demandes.iterrows():
             s_envoi = row[c_statut]
-            icon_s = "⏳" if s_envoi == "Demandé" else "✅"
-            st.write(f"{icon_s} **{row[c_titre]}** (chez {row[c_proprio]}) - Statut : {s_envoi}")
+            st.write(f"{'⏳' if s_envoi == 'Demandé' else '✅'} **{row[c_titre]}** (chez {row[c_proprio]})")
     else: st.write("Aucune demande en cours.")
 
-# --- 4 & 5 (AJOUT/IMPORT) ---
+# --- 4. AJOUTER ---
 with onglets[3]:
     with st.form("add"):
         t, a = st.text_input("Titre"), st.text_input("Auteur")
@@ -151,13 +146,36 @@ with onglets[3]:
             sheet_livres.append_row(["", t, a, utilisateur, "", "", n, "Libre"])
             st.rerun()
 
+# --- 5. IMPORT (VERSION PÉDAGOGIQUE) ---
 with onglets[4]:
-    up = st.file_uploader("Excel", type="xlsx")
-    if up and st.button("Importer"):
+    st.subheader("📤 Import groupé")
+    
+    with st.expander("❓ Guide : Comment importer ?", expanded=False):
+        st.markdown("""
+        1. **Téléchargez** le modèle Excel vert ci-dessous.
+        2. **Remplissez** vos livres dans le tableau (sans toucher aux titres).
+        3. **Déposez** le fichier fini dans la zone ci-dessous.
+        """)
+
+    # Génération du modèle Excel
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        pd.DataFrame(columns=["Titre", "Auteur", "Avis_Delire"]).to_excel(writer, index=False, sheet_name='Modèle')
+    
+    st.download_button(
+        label="📥 Télécharger le modèle Excel (.xlsx)",
+        data=output.getvalue(),
+        file_name="modele_biblio.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    
+    st.write("---")
+    up = st.file_uploader("Déposez votre fichier ici", type="xlsx")
+    if up and st.button("🚀 Lancer l'import"):
         df_im = pd.read_excel(up)
         for _, r in df_im.iterrows():
-            sheet_livres.append_row(["", r['Titre'], r.get('Auteur',''), utilisateur, "", "", "", "Libre"])
-        st.success("Fait !"); st.rerun()
+            sheet_livres.append_row(["", r['Titre'], r.get('Auteur',''), utilisateur, "", "", r.get('Avis_Delire',''), "Libre"])
+        st.success("Import réussi !"); st.rerun()
 
 # --- 6. ADMIN ---
 if utilisateur in ["Didier", "Amélie"]:
@@ -168,5 +186,4 @@ if utilisateur in ["Didier", "Amélie"]:
             if st.form_submit_button("Ajouter membre"):
                 sheet_membres.append_row([p, t, c]); st.success("Membre ajouté !"); st.rerun()
 
-st.write("---")
 st.caption("Une création DJA’WEB avec l’aide de Gemini IA")
