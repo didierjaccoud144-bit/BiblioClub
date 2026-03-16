@@ -24,23 +24,26 @@ try:
     df_membres = pd.DataFrame(sheet_membres.get_all_records())
     df_livres = pd.DataFrame(sheet_livres.get_all_records())
 except Exception as e:
-    st.error(f"Erreur : {e}")
+    st.error(f"Erreur de lecture : {e}")
     st.stop()
+
+# --- DÉTECTION DES COLONNES (POUR ÉVITER LES KEYERROR) ---
+col_membre = "Membre" if "Membre" in df_livres.columns else df_livres.columns[2] # Par défaut la 3ème colonne
+col_prenom = "Prénom" if "Prénom" in df_membres.columns else df_membres.columns[0]
 
 # --- FONCTION WHATSAPP ---
 def envoyer_whatsapp(telephone, message):
     msg_code = urllib.parse.quote(message)
-    link = f"https://wa.me/{telephone}?text={msg_code}"
-    return link
+    return f"https://wa.me/{str(telephone).replace(' ', '')}?text={msg_code}"
 
 # --- TITRE ---
 st.title("📚 Le Biblio Club")
 st.write("---")
 
 # --- SÉLECTION UTILISATEUR ---
-liste_membres = df_membres['Prénom'].tolist() if 'Prénom' in df_membres.columns else df_membres['Nom'].tolist()
+liste_membres = df_membres[col_prenom].tolist()
 utilisateur = st.selectbox("👤 Qui êtes-vous ?", liste_membres)
-infos_user = df_membres[df_membres.iloc[:, 0] == utilisateur].iloc[0] # Choppe la ligne du membre
+infos_user = df_membres[df_membres[col_prenom] == utilisateur].iloc[0]
 
 st.write("---")
 
@@ -49,75 +52,74 @@ onglets = st.tabs(["📖 Bibliothèque", "🤝 Emprunts", "👤 Mon Profil", "�
 
 # --- 1. BIBLIOTHÈQUE ---
 with onglets[0]:
-    st.subheader("Les pépites disponibles")
-    for idx, row in df_livres.iloc[::-1].iterrows():
-        # Détermination du statut et de la couleur
-        statut = str(row.get('Statut', 'Libre')).strip()
-        color = "green" if statut == "Libre" else "orange" if statut == "Demandé" else "red"
-        
-        with st.container():
-            c1, c2 = st.columns([1, 4])
-            with c1: st.title("📕")
-            with c2:
-                st.markdown(f"### {row['Titre']} :{color}[ ({statut})]")
-                st.write(f"**Auteur :** {row.get('Auteur')} | **Proprio :** {row.get('Membre')}")
-                
-                if statut == "Libre" and row['Membre'] != utilisateur:
-                    if st.button(f"Demander à {row['Membre']}", key=f"btn_{idx}"):
-                        # Message au proprio
-                        tel_proprio = df_membres[df_membres.iloc[:, 0] == row['Membre']].iloc[0].get('Téléphone', '')
-                        texte = f"Salut {row['Membre']}, c'est {utilisateur} ! Je serais super intéressé par ton livre '{row['Titre']}' sur le Biblio Club. Est-il disponible ? 😊"
-                        st.link_button("📱 Envoyer la demande via WhatsApp", envoyer_whatsapp(tel_proprio, texte))
-            st.write("---")
+    st.subheader("Les pépites du Club")
+    if not df_livres.empty:
+        for idx, row in df_livres.iloc[::-1].iterrows():
+            statut = str(row.get('Statut', 'Libre'))
+            color = "green" if statut == "Libre" else "orange" if statut == "Demandé" else "red"
+            
+            with st.container():
+                c1, c2 = st.columns([1, 4])
+                with c1: st.title("📕")
+                with c2:
+                    st.markdown(f"### {row['Titre']} :{color}[ ({statut})]")
+                    st.write(f"**Auteur :** {row.get('Auteur')} | **Proprio :** {row.get(col_membre)}")
+                    
+                    if row.get('Avis_delire'):
+                        st.success(f"💬 **L'avis de {row.get(col_membre)}** :  \n{row['Avis_delire']}")
+                    
+                    if statut == "Libre" and row.get(col_membre) != utilisateur:
+                        tel_p = df_membres[df_membres[col_prenom] == row.get(col_membre)].iloc[0].get('Téléphone', '')
+                        txt = f"Salut {row.get(col_membre)}, c'est {utilisateur} ! Je serais intéressé par ton livre '{row['Titre']}' sur le Biblio Club. Est-il dispo ? 😊"
+                        st.link_button(f"Demander à {row.get(col_membre)}", envoyer_whatsapp(tel_p, txt))
+                st.write("---")
 
-# --- 2. GESTION DES EMPRUNTS ---
+# --- 2. EMPRUNTS ---
 with onglets[1]:
     st.subheader("🤝 Livres en mouvement")
-    empruntes = df_livres[df_livres['Statut'].isin(['Demandé', 'Emprunté'])]
-    if not empruntes.empty:
-        st.table(empruntes[['Titre', 'Membre', 'Emprunteur', 'Statut']])
+    mask = df_livres['Statut'].isin(['Demandé', 'Emprunté'])
+    if not df_livres[mask].empty:
+        st.dataframe(df_livres[mask][['Titre', col_membre, 'Emprunteur', 'Statut']], hide_index=True)
     else:
-        st.info("Tous les livres sont au chaud chez leurs propriétaires !")
+        st.info("Tout est en rayon !")
 
 # --- 3. MON PROFIL & RÉPONSES ---
 with onglets[2]:
     st.subheader(f"Mon espace ({utilisateur})")
-    mes_livres = df_livres[df_livres['Membre'] == utilisateur]
+    mes_livres = df_livres[df_livres[col_membre] == utilisateur]
     
     if not mes_livres.empty:
         for idx, row in mes_livres.iterrows():
             st.write(f"📙 **{row['Titre']}**")
             if row.get('Statut') == "Demandé":
-                demandeur = row.get('Emprunteur', 'quelqu\'un')
+                demandeur = row.get('Emprunteur')
                 st.warning(f"⚠️ {demandeur} veut ce livre !")
-                
-                col_r1, col_r2 = st.columns(2)
-                with col_r1:
-                    if st.button("✅ Accepter", key=f"acc_{idx}"):
-                        msg = f"Hello ! C'est {utilisateur}. Ton prêt pour '{row['Titre']}' est validé ! Tu peux passer le prendre {infos_user.get('Infos_Retrait', 'à mon adresse habituelle')}. À bientôt !"
-                        # Note: Ici on cherche le tel du demandeur dans la table membres
-                        tel_demandeur = df_membres[df_membres.iloc[:, 0] == demandeur].iloc[0].get('Téléphone', '')
-                        st.link_button("Envoyer confirmation WhatsApp", envoyer_whatsapp(tel_demandeur, msg))
-                with col_r2:
-                    if st.button("❌ Refuser", key=f"ref_{idx}"):
-                        st.write("Demande refusée (pensez à prévenir le membre par message !)")
+                tel_d = df_membres[df_membres[col_prenom] == demandeur].iloc[0].get('Téléphone', '')
+                msg_ok = f"Hello {demandeur} ! C'est {utilisateur}. Ton prêt pour '{row['Titre']}' est OK ! On se voit pour le retrait : {infos_user.get('Infos_Retrait', 'Contacte-moi !')}"
+                st.link_button(f"✅ Valider pour {demandeur}", envoyer_whatsapp(tel_d, msg_ok))
             st.write("---")
 
-# --- 4 & 5 (AJOUT/IMPORT) ---
+# --- 4. AJOUTER (AVEC SYSTÈME DE NOTES) ---
 with onglets[3]:
-    with st.form("add"):
-        t, a, av = st.text_input("Titre"), st.text_input("Auteur"), st.text_area("Avis")
-        if st.form_submit_button("Ajouter"):
-            sheet_livres.append_row([t, a, utilisateur, av, "Libre", ""])
-            st.success("Livre ajouté !"); st.balloons()
+    st.subheader("Ajouter un livre")
+    with st.form("add_v3", clear_on_submit=True):
+        t = st.text_input("Titre")
+        a = st.text_input("Auteur")
+        note = st.select_slider("Ma note (Biblio-Score)", options=["📚", "📚📚", "📚📚📚", "📚📚📚📚"])
+        com = st.text_area("Mon commentaire")
+        if st.form_submit_button("Partager"):
+            avis_final = f"{note} {com}"
+            sheet_livres.append_row([t, a, utilisateur, avis_final, "Libre", ""])
+            st.success("C'est en ligne !"); st.balloons()
 
+# --- 5. IMPORT ---
 with onglets[4]:
-    up = st.file_uploader("Fichier Excel", type="xlsx")
-    if up and st.button("Lancer l'import"):
+    up = st.file_uploader("Excel", type="xlsx")
+    if up and st.button("Importer"):
         df_im = pd.read_excel(up)
         for _, r in df_im.iterrows():
             sheet_livres.append_row([r['Titre'], r.get('Auteur',''), utilisateur, r.get('Avis_delire',''), "Libre", ""])
-        st.success("Import terminé !")
+        st.success("Fait !")
 
 st.write("---")
 st.caption("Une création DJA’WEB avec l’aide de Gemini IA")
