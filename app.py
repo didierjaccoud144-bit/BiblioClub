@@ -29,7 +29,7 @@ except Exception as e:
     st.error(f"Erreur de lecture : {e}")
     st.stop()
 
-# --- CONSTANTES COLONNES ---
+# --- CONSTANTES ---
 COL = {
     "Titre": "Titre", "Auteur": "Auteur", "Proprio": "Propriétaire",
     "Avis": "Avis_delire", "Statut": "Statut", "Emprunteur": "Emprunteur",
@@ -65,7 +65,6 @@ with onglets[0]:
     st.markdown("### 🔍 Trier par")
     tri = st.selectbox("", ["Derniers ajouts", "Note", "Titre (A-Z)", "Auteur", "Propriétaire"], label_visibility="collapsed")
     
-    # Préparation du dataframe trié
     df_tri = df_livres.copy()
     if tri == "Titre (A-Z)": df_tri = df_tri.sort_values(by=COL["Titre"])
     elif tri == "Auteur": df_tri = df_tri.sort_values(by=COL["Auteur"])
@@ -75,19 +74,16 @@ with onglets[0]:
 
     for idx, row in df_tri.iterrows():
         statut = str(row.get(COL["Statut"], 'Libre')).strip() or "Libre"
+        proprio_livre = str(row[COL["Proprio"]]).strip()
+        user_actuel = str(utilisateur).strip()
         
-        # --- CORRECTION VISUELLE : Choix de l'emoji livre ---
         if statut == "Libre":
-            emoji_livre = "📗" # Vert pour Libre
-            color = "green"
+            emoji_livre, color = "📗", "green"
         elif statut == "Demandé":
-            emoji_livre = "📙" # Orange pour Demandé
-            color = "orange"
-        else: # Emprunté
-            emoji_livre = "📕" # Rouge pour En prêt
-            color = "red"
+            emoji_livre, color = "📙", "orange"
+        else:
+            emoji_livre, color = "📕", "red"
         
-        # Badge Nouveauté (7 jours)
         badge_new = ""
         try:
             date_l = datetime.strptime(str(row[COL["Date"]]), "%Y-%m-%d")
@@ -97,23 +93,90 @@ with onglets[0]:
 
         with st.container():
             c1, c2 = st.columns([1, 4])
-            with c1: st.title(emoji_livre) # Affichage du livre de la bonne couleur
+            with c1: st.title(emoji_livre)
             with c2:
-                # Titre + Note + Statut à côté
                 st.markdown(f"### {badge_new}{row[COL['Titre']]} {row.get(COL['Note'], '')} :{color}[ ({statut})]")
-                st.write(f"**{row[COL['Auteur']]}** | **Propriétaire :** {row[COL['Proprio']]}")
-                if row.get(COL['Avis']):
-                    st.success(f"💬 {row[COL['Avis']]}")
+                st.write(f"**{row[COL['Auteur']]}** | **Propriétaire :** {proprio_livre}")
+                if row.get(COL['Avis']): st.success(f"💬 {row[COL['Avis']]}")
                 
-                # --- CORRECTION SÉCURITÉ : Bouton "Demander" ---
-                # Il n'apparaît QUE si Libre ET si le propriétaire n'est PAS moi
-                if statut == "Libre" and str(row[COL['Proprio']]) != utilisateur:
+                # SÉCURITÉ : Bouton uniquement si Libre ET pas à moi
+                if statut == "Libre" and proprio_livre != user_actuel:
                     if st.button(f"Demander ce livre", key=f"req_{idx}"):
                         original_idx = df_livres.index[df_livres[COL['Titre']] == row[COL['Titre']]][0] + 2
                         sheet_livres.update_cell(original_idx, 5, "Demandé")
-                        sheet_livres.update_cell(original_idx, 6, utilisateur)
-                        st.rerun()
+                        sheet_livres.update_cell(original_idx, 6, user_actuel)
+                        st.success("Demande envoyée !"); st.rerun()
             st.write("---")
 
-# --- LE RESTE DU CODE (EMPRUNTS / PROFIL / AJOUT) ---
-# ... Identique à la version stable précédente, utilisant COL["Proprio"]
+# --- 2. EMPRUNTS ---
+with onglets[1]:
+    st.subheader("🤝 Suivi des emprunts")
+    st.markdown("#### 📥 Mes demandes faites")
+    mes_dem = df_livres[df_livres[COL["Emprunteur"]] == utilisateur]
+    if not mes_dem.empty:
+        for _, r in mes_dem.iterrows():
+            st.info(f"📖 **{r[COL['Titre']]}** chez {r[COL['Proprio']]} ({r[COL['Statut']]})")
+    else: st.write("Aucune demande en cours.")
+
+    st.write("---")
+    st.markdown("#### 📤 Demandes reçues")
+    mask_mouv = (df_livres[COL["Proprio"]] == utilisateur) & (df_livres[COL["Statut"]].isin(['Demandé', 'Emprunté']))
+    mes_reçus = df_livres[mask_mouv]
+    if not mes_reçus.empty:
+        for idx, r in mes_reçus.iterrows():
+            emp = r[COL["Emprunteur"]]
+            st.warning(f"🔔 **{emp}** -> **{r[COL['Titre']]}**")
+            if r[COL["Statut"]] == "Demandé":
+                if st.button(f"✅ Valider prêt pour {emp}", key=f"ok_{idx}"):
+                    oidx = df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2
+                    sheet_livres.update_cell(oidx, 5, "Emprunté")
+                    info_d = get_membre_info(emp)
+                    msg = f"Hello {emp} ! Ok pour '{r[COL['Titre']]}'. Retrait : {infos_user.get('Infos_Retrait')}"
+                    st.link_button("📱 WhatsApp", envoyer_whatsapp(info_d.get('Téléphone',''), msg))
+            elif r[COL["Statut"]] == "Emprunté":
+                if st.button(f"🔄 Rendu", key=f"ret_{idx}"):
+                    oidx = df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2
+                    sheet_livres.update_cell(oidx, 5, "Libre")
+                    sheet_livres.update_cell(oidx, 6, "")
+                    st.rerun()
+    else: st.write("Rien à signaler.")
+
+# --- 3. MON PROFIL ---
+with onglets[2]:
+    st.subheader(f"👤 {utilisateur}")
+    st.markdown(f"📍 Position : **{infos_user.get('Position')}**")
+    st.write("---")
+    mes_l = df_livres[df_livres[COL["Proprio"]] == utilisateur]
+    if not mes_l.empty:
+        for idx, r in mes_l.iterrows():
+            with st.expander(f"📙 {r[COL['Titre']]} ({r[COL['Statut']]})"):
+                if st.button("Supprimer", key=f"del_{idx}"):
+                    oidx = df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2
+                    sheet_livres.delete_rows(oidx)
+                    st.rerun()
+    else: st.info("Vous n'avez pas encore ajouté de livres.")
+
+# --- 4. AJOUTER ---
+with onglets[3]:
+    st.subheader("Partager des pépites")
+    mode = st.radio("", ["✅ Manuel", "📤 Import Excel"], horizontal=True, label_visibility="collapsed")
+    if mode == "✅ Manuel":
+        with st.form("add_manual"):
+            t, a = st.text_input("Titre"), st.text_input("Auteur")
+            n = st.select_slider("Note", options=["📚", "📚📚", "📚📚📚", "📚📚📚📚"])
+            c = st.text_area("Avis-Délire")
+            if st.form_submit_button("Ajouter"):
+                d = datetime.now().strftime("%Y-%m-%d")
+                sheet_livres.append_row([t, a, utilisateur, c, "Libre", "", n, d])
+                st.success("Livre ajouté !"); st.rerun()
+    else:
+        st.link_button("📥 Télécharger BiblioMod.xlsx", "https://raw.githubusercontent.com/TonUser/TonRepo/main/BiblioMod.xlsx")
+        up = st.file_uploader("", type="xlsx")
+        if up and st.button("Lancer l'import"):
+            df_im = pd.read_excel(up)
+            dt = datetime.now().strftime("%Y-%m-%d")
+            for _, r in df_im.iterrows():
+                sheet_livres.append_row([r['Titre'], r.get('Auteur',''), utilisateur, r.get('Avis',''), "Libre", "", r.get('Note',''), dt])
+            st.success("Import réussi !"); st.rerun()
+
+st.caption("Une création DJA’WEB avec l’aide de Gemini IA")
