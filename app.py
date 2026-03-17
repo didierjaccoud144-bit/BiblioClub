@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from membres_profil import get_membre_info, get_liste_membres_fixes
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Biblio Club", page_icon="📚", layout="centered")
+st.set_page_config(page_title="Méli-Mélo", page_icon="📚", layout="centered")
 
 def get_gspread_client():
     creds_dict = st.secrets["gcp_service_account"].to_dict()
@@ -24,9 +24,10 @@ try:
     client = get_gspread_client()
     spreadsheet = client.open("BiblioClub_Data") 
     sheet_livres = spreadsheet.worksheet("Livres")
+    sheet_membres = spreadsheet.worksheet("Membres") # Pour l'ajout de membres
     df_livres = pd.DataFrame(sheet_livres.get_all_records())
 except Exception as e:
-    st.error(f"Erreur de lecture : {e}")
+    st.error(f"Erreur de connexion : {e}")
     st.stop()
 
 # --- CONSTANTES ---
@@ -40,25 +41,33 @@ def envoyer_whatsapp(telephone, message):
     if not telephone: return "#"
     return f"https://wa.me/{str(telephone).replace(' ', '')}?text={urllib.parse.quote(message)}"
 
-def show_avatar(url, size=40):
-    if url:
-        st.markdown(f'<img src="{url}" style="width:{size}px; height:{size}px; border-radius:50%; margin-right:10px; object-fit: cover;">', unsafe_allow_html=True)
+def show_avatar(url, size=55):
+    if url and str(url).startswith("http"):
+        st.markdown(f'<img src="{url}" style="width:{size}px; height:{size}px; border-radius:50%; margin-right:10px; object-fit: cover; border: 2px solid #eee;">', unsafe_allow_html=True)
+    else:
+        st.markdown(f'<div style="width:{size}px; height:{size}px; border-radius:50%; background:#f0f2f6; display:flex; align-items:center; justify-content:center; font-size:25px; border: 2px solid #eee;">👤</div>', unsafe_allow_html=True)
 
 # --- INTERFACE ---
-st.title("📚 Le Biblio Club")
+st.title(" La boîte à livres à Méli-Mélo ")
 
 liste_membres = get_liste_membres_fixes()
 col_u1, col_u2 = st.columns([1, 4])
 with col_u1:
     prenom_user = st.session_state.get('user', liste_membres[0])
     infos_user = get_membre_info(prenom_user)
-    show_avatar(infos_user.get('Avatar',''), size=55)
+    show_avatar(infos_user.get('Avatar',''))
 with col_u2:
     utilisateur = st.selectbox("", liste_membres, key='user', label_visibility="collapsed")
     infos_user = get_membre_info(utilisateur)
 
 st.write("---")
-onglets = st.tabs(["📖 Bibliothèque", "🤝 Emprunts", "👤 Mon Profil", "➕ Ajouter"])
+
+# Gestion des onglets (Admin visible uniquement pour Didier et Amélie)
+onglets_noms = ["📖 Bibliothèque", "🤝 Emprunts", "👤 Mon Profil", "➕ Ajouter"]
+if utilisateur in ["Didier", "Amélie"]:
+    onglets_noms.append("⚙️ Gérance")
+
+onglets = st.tabs(onglets_noms)
 
 # --- 1. BIBLIOTHÈQUE ---
 with onglets[0]:
@@ -74,15 +83,9 @@ with onglets[0]:
 
     for idx, row in df_tri.iterrows():
         statut = str(row.get(COL["Statut"], 'Libre')).strip() or "Libre"
-        proprio_livre = str(row[COL["Proprio"]]).strip()
-        user_actuel = str(utilisateur).strip()
+        p_livre = str(row[COL["Proprio"]]).strip()
         
-        if statut == "Libre":
-            emoji_livre, color = "📗", "green"
-        elif statut == "Demandé":
-            emoji_livre, color = "📙", "orange"
-        else:
-            emoji_livre, color = "📕", "red"
+        emoji_livre, color = ("📗", "green") if statut == "Libre" else (("📙", "orange") if statut == "Demandé" else ("📕", "red"))
         
         badge_new = ""
         try:
@@ -96,15 +99,14 @@ with onglets[0]:
             with c1: st.title(emoji_livre)
             with c2:
                 st.markdown(f"### {badge_new}{row[COL['Titre']]} {row.get(COL['Note'], '')} :{color}[ ({statut})]")
-                st.write(f"**{row[COL['Auteur']]}** | **Propriétaire :** {proprio_livre}")
+                st.write(f"**{row[COL['Auteur']]}** | **Propriétaire :** {p_livre}")
                 if row.get(COL['Avis']): st.success(f"💬 {row[COL['Avis']]}")
                 
-                # SÉCURITÉ : Bouton uniquement si Libre ET pas à moi
-                if statut == "Libre" and proprio_livre != user_actuel:
+                if statut == "Libre" and p_livre != utilisateur:
                     if st.button(f"Demander ce livre", key=f"req_{idx}"):
-                        original_idx = df_livres.index[df_livres[COL['Titre']] == row[COL['Titre']]][0] + 2
-                        sheet_livres.update_cell(original_idx, 5, "Demandé")
-                        sheet_livres.update_cell(original_idx, 6, user_actuel)
+                        oidx = df_livres.index[df_livres[COL['Titre']] == row[COL['Titre']]][0] + 2
+                        sheet_livres.update_cell(oidx, 5, "Demandé")
+                        sheet_livres.update_cell(oidx, 6, utilisateur)
                         st.success("Demande envoyée !"); st.rerun()
             st.write("---")
 
@@ -134,7 +136,7 @@ with onglets[1]:
                     msg = f"Hello {emp} ! Ok pour '{r[COL['Titre']]}'. Retrait : {infos_user.get('Infos_Retrait')}"
                     st.link_button("📱 WhatsApp", envoyer_whatsapp(info_d.get('Téléphone',''), msg))
             elif r[COL["Statut"]] == "Emprunté":
-                if st.button(f"🔄 Rendu", key=f"ret_{idx}"):
+                if st.button(f"🔄 Marquer comme rendu", key=f"ret_{idx}"):
                     oidx = df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2
                     sheet_livres.update_cell(oidx, 5, "Libre")
                     sheet_livres.update_cell(oidx, 6, "")
@@ -152,13 +154,11 @@ with onglets[2]:
             with st.expander(f"📙 {r[COL['Titre']]} ({r[COL['Statut']]})"):
                 if st.button("Supprimer", key=f"del_{idx}"):
                     oidx = df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2
-                    sheet_livres.delete_rows(oidx)
-                    st.rerun()
+                    sheet_livres.delete_rows(oidx); st.rerun()
     else: st.info("Vous n'avez pas encore ajouté de livres.")
 
 # --- 4. AJOUTER ---
 with onglets[3]:
-    st.subheader("Partager des pépites")
     mode = st.radio("", ["✅ Manuel", "📤 Import Excel"], horizontal=True, label_visibility="collapsed")
     if mode == "✅ Manuel":
         with st.form("add_manual"):
@@ -170,13 +170,33 @@ with onglets[3]:
                 sheet_livres.append_row([t, a, utilisateur, c, "Libre", "", n, d])
                 st.success("Livre ajouté !"); st.rerun()
     else:
-        st.link_button("📥 Télécharger BiblioMod.xlsx", "https://raw.githubusercontent.com/TonUser/TonRepo/main/BiblioMod.xlsx")
+        st.markdown("### 📝 Mode d'emploi Import")
+        st.markdown("""
+        1. **Télécharge** le modèle `BiblioMod.xlsx` ci-dessous.
+        2. **Remplis** les colonnes Titre, Auteur, Avis et Note (📚).
+        3. **Charge** le fichier complété pour tout mettre en ligne d'un coup.
+        """)
+        st.link_button("📥 Télécharger le modèle Excel", "https://raw.githubusercontent.com/TonUser/TonRepo/main/BiblioMod.xlsx")
         up = st.file_uploader("", type="xlsx")
-        if up and st.button("Lancer l'import"):
+        if up and st.button("Lancer l'importation"):
             df_im = pd.read_excel(up)
             dt = datetime.now().strftime("%Y-%m-%d")
             for _, r in df_im.iterrows():
                 sheet_livres.append_row([r['Titre'], r.get('Auteur',''), utilisateur, r.get('Avis',''), "Libre", "", r.get('Note',''), dt])
-            st.success("Import réussi !"); st.rerun()
+            st.success("Importation réussie !"); st.rerun()
+
+# --- 5. GÉRANCE (ADMIN) ---
+if utilisateur in ["Didier", "Amélie"]:
+    with onglets[-1]:
+        st.subheader("⚙️ Gérance du Club")
+        with st.form("add_member"):
+            st.markdown("#### Ajouter un nouveau membre")
+            new_name = st.text_input("Prénom")
+            new_tel = st.text_input("Téléphone (ex: 41791234567)")
+            new_pos = st.text_input("Lieu de domicile")
+            new_ret = st.text_input("Infos Retrait (ex: Chez moi le soir)")
+            if st.form_submit_button("Créer le compte membre"):
+                sheet_membres.append_row([new_name, new_tel, "", new_pos, new_ret])
+                st.success(f"Bienvenue à {new_name} ! N'oublie pas de mettre à jour membres_profil.py")
 
 st.caption("Une création DJA’WEB avec l’aide de Gemini IA")
