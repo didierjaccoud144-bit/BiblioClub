@@ -26,10 +26,8 @@ try:
     sheet_livres = spreadsheet.worksheet("Livres")
     sheet_membres = spreadsheet.worksheet("Membres")
     data = sheet_livres.get_all_records()
-    if not data:
-        df_livres = pd.DataFrame(columns=["Titre", "Auteur", "Propriétaire", "Avis_delire", "Statut", "Emprunteur", "Note", "Date_Ajout"])
-    else:
-        df_livres = pd.DataFrame(data)
+    # Sécurité si la bibliothèque est vide
+    df_livres = pd.DataFrame(data) if data else pd.DataFrame(columns=["Titre", "Auteur", "Propriétaire", "Avis_delire", "Statut", "Emprunteur", "Note", "Date_Ajout"])
 except Exception as e:
     st.error(f"Erreur de connexion : {e}")
     st.stop()
@@ -40,6 +38,7 @@ COL = {
     "Note": "Note", "Date": "Date_Ajout"
 }
 
+# --- FONCTION WHATSAPP UNIVERSELLE ---
 def envoyer_whatsapp(message):
     return f"https://api.whatsapp.com/send?text={urllib.parse.quote(message)}"
 
@@ -62,27 +61,25 @@ nom_onglet_emprunt = "🤝 Emprunts (🔔)" if has_notif else "🤝 Emprunts"
 
 st.write("---")
 onglets_noms = ["❓ Mode d'emploi", "📖 Bibliothèque", nom_onglet_emprunt, "👤 Mon Profil", "➕ Ajouter"]
+
+# RENOMMAGE : Gérance devient "Ajouter un membre" pour les admins
 if utilisateur in ["Didier", "Amélie"]:
-    onglets_noms.append("⚙️ Gérance")
+    onglets_noms.append("👤 Ajouter un membre")
+
 onglets = st.tabs(onglets_noms)
 
 # --- 0. MODE D'EMPLOI ---
 with onglets[0]:
     st.subheader("🚀 Bienvenue au Club !")
     st.markdown("""
-    Cette application nous permet de partager nos livres en toute simplicité.
-    
     ### 📱 1. L'installer sur votre téléphone
-    * **Sur iPhone** : Clique sur **Partage** (carré avec flèche) -> **« Sur l'écran d'accueil »**.
-    * **Sur Android** : Clique sur les **3 petits points** -> **« Installer l'application »** ou **« Ajouter à l'écran d'accueil »**.
+    * **Sur iPhone** : Icône **Partage** -> **« Sur l'écran d'accueil »**.
+    * **Sur Android** : Les **3 petits points** -> **« Installer l'application »**.
     
-    ### 🎨 2. Comprendre les couleurs
-    * 📗 **Livre Vert** : Disponible ! Clique sur "Demander".
-    * 📙 **Livre Orange** : Demande en cours, en attente du propriétaire.
-    * 📕 **Livre Rouge** : Déjà en prêt chez un membre.
-    
-    ### ✍️ 3. Prêter vos livres
-    Va dans l'onglet **"➕ Ajouter"**. Tu peux saisir tes livres manuellement ou utiliser l'**Import Excel**.
+    ### 🎨 2. Les couleurs
+    * 📗 **Livre Vert** : Disponible !
+    * 📙 **Livre Orange** : Demande en cours.
+    * 📕 **Livre Rouge** : Déjà en prêt.
     """)
     st.success("Bonnes lectures ! 📖")
 
@@ -91,7 +88,7 @@ with onglets[1]:
     if df_livres.empty:
         st.info("La boîte est vide.")
     else:
-        tri = st.selectbox("Trier par", ["Derniers ajouts", "Note", "Titre (A-Z)", "Auteur", "Propriétaire"])
+        tri = st.selectbox("Trier par", ["Derniers ajouts", "Note", "Titre (A-Z)"])
         df_tri = df_livres.copy()
         if tri == "Titre (A-Z)": df_tri = df_tri.sort_values(by=COL["Titre"])
         elif tri == "Note": df_tri = df_tri.sort_values(by=COL["Note"], ascending=False)
@@ -175,13 +172,13 @@ with onglets[4]:
             for _, r in df_im.iterrows():
                 sheet_livres.append_row([r['Titre'], r.get('Auteur',''), utilisateur, r.get('Avis',''), "Libre", "", r.get('Note',''), datetime.now().strftime("%Y-%m-%d")]); st.rerun()
 
-# --- 5. GÉRANCE ---
+# --- 5. AJOUTER UN MEMBRE (Anciennement Gérance) ---
 if utilisateur in ["Didier", "Amélie"]:
     with onglets[-1]:
-        st.subheader("⚙️ Gérance")
+        st.subheader("👤 Ajouter un nouveau membre")
         with st.form("nm"):
             n, t, p, r = st.text_input("Prénom"), st.text_input("Tél"), st.text_input("Lieu"), st.text_input("Retrait")
-            if st.form_submit_button("Créer"):
+            if st.form_submit_button("Enregistrer"):
                 sheet_membres.append_row([n, t, "", p, r]); st.success("Fait !")
 
 st.caption("Une création DJA’WEB avec l’aide de Gemini IA")
