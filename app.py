@@ -11,8 +11,10 @@ from membres_profil import get_membre_info, get_liste_membres_fixes
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Méli-Mélo", page_icon="📚", layout="centered")
 
-# FORCE LE RAFRAÎCHISSEMENT : Nettoie la mémoire à chaque chargement pour être ultra-réactif
-st.cache_data.clear()
+# Fonction pour vider le cache et forcer la lecture Google Sheets
+def refresh():
+    st.cache_data.clear()
+    st.rerun()
 
 def get_gspread_client():
     creds_dict = st.secrets["gcp_service_account"].to_dict()
@@ -47,11 +49,20 @@ def envoyer_whatsapp(message):
 # --- INTERFACE ---
 st.title(" La boîte à livres à Méli-Mélo ")
 
-liste_membres = get_liste_membres_fixes()
-utilisateur = st.selectbox("Utilisateur", liste_membres, key='user', label_visibility="collapsed")
+col_user, col_refresh = st.columns([3, 1])
+with col_user:
+    liste_membres = get_liste_membres_fixes()
+    utilisateur = st.selectbox("Utilisateur", liste_membres, key='user', label_visibility="collapsed")
+with col_refresh:
+    if st.button("🔄 Actualiser"):
+        refresh()
+
+# --- CONFIRMATION DE CONNEXION (BANDEAU VERT) ---
+st.success(f"😊 Bienvenue **{utilisateur}** !")
+
 infos_user = get_membre_info(utilisateur)
 
-# --- LOGIQUE NOTIFICATION FLASH ---
+# --- LOGIQUE NOTIFICATION FLASH (BANDEAU ORANGE) ---
 has_notif = False
 nb_demandes = 0
 if not df_livres.empty:
@@ -59,7 +70,7 @@ if not df_livres.empty:
     nb_demandes = len(mes_demandes)
     if nb_demandes > 0:
         has_notif = True
-        st.warning(f"🔔 **{utilisateur}**, tu as {nb_demandes} demande(s) d'emprunt en attente dans l'onglet Emprunts !")
+        st.warning(f"🔔 Tu as {nb_demandes} demande(s) d'emprunt en attente dans l'onglet Emprunts !")
 
 nom_onglet_emprunt = f"🤝 Emprunts ({nb_demandes})" if has_notif else "🤝 Emprunts"
 
@@ -72,7 +83,7 @@ onglets_noms.append("❓ Mode d'emploi")
 
 onglets = st.tabs(onglets_noms)
 
-# --- 1. BIBLIOTHÈQUE (ONGLET PAR DÉFAUT) ---
+# --- 1. BIBLIOTHÈQUE ---
 with onglets[0]:
     if df_livres.empty:
         st.info("La boîte est vide.")
@@ -105,16 +116,17 @@ with onglets[0]:
                             oidx = df_livres.index[df_livres[COL['Titre']] == row[COL['Titre']]][0] + 2
                             total = (str(row.get(COL["Avis_Lecteurs"], "")) + f"\n\n**{utilisateur}** ({n_l}) : {c_l}").strip()
                             sheet_livres.update_cell(oidx, 9, total)
-                            st.rerun()
+                            refresh()
 
                     if statut == "Libre" and p_livre != utilisateur.strip():
                         if st.button(f"Demander", key=f"req_{idx}"):
                             oidx = df_livres.index[df_livres[COL['Titre']] == row[COL['Titre']]][0] + 2
                             sheet_livres.update_cell(oidx, 5, "Demandé")
-                            sheet_livres.update_cell(oidx, 6, utilisateur); st.rerun()
+                            sheet_livres.update_cell(oidx, 6, utilisateur)
+                            refresh()
                 st.write("---")
 
-# --- 2. EMPRUNTS (CORRECTION BOUTON REFUS) ---
+# --- 2. EMPRUNTS ---
 with onglets[1]:
     st.subheader("🤝 Suivi des emprunts")
     res = df_livres[(df_livres[COL["Proprio"]] == utilisateur) & (df_livres[COL["Statut"]].isin(['Demandé', 'Emprunté']))]
@@ -128,19 +140,16 @@ with onglets[1]:
                     if st.button(f"✅ Valider", key=f"v_{idx}"):
                         oidx = df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2
                         sheet_livres.update_cell(oidx, 5, "Emprunté")
-                        msg_ok = f"C'est OK pour '{r[COL['Titre']]}'. On s'organise ?"
-                        st.link_button("📱 WhatsApp", envoyer_whatsapp(msg_ok))
+                        st.link_button("📱 WhatsApp", envoyer_whatsapp(f"C'est OK pour '{r[COL['Titre']]}'. On s'organise ?"))
                 with col2:
                     if st.button(f"❌ Décliner", key=f"d_{idx}"):
                         oidx = df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2
                         sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, "")
-                        # CORRECTION : Ajout du bouton WhatsApp ici aussi
-                        msg_refus = f"Désolé {emp}, je ne peux pas prêter '{r[COL['Titre']]}' pour le moment. 😉"
-                        st.link_button("📱 WhatsApp (Refus)", envoyer_whatsapp(msg_refus))
+                        st.link_button("📱 WhatsApp (Refus)", envoyer_whatsapp(f"Désolé {emp}, pas dispo pour '{r[COL['Titre']]}' pour le moment."))
             elif r[COL["Statut"]] == "Emprunté":
                 if st.button(f"🔄 Rendu", key=f"r_{idx}"):
                     oidx = df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2
-                    sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, ""); st.rerun()
+                    sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, ""); refresh()
     else: st.write("Aucune demande en attente.")
 
 # --- 3. PROFIL ---
@@ -156,7 +165,7 @@ with onglets[2]:
         with st.expander(f"📙 {r[COL['Titre']]}"):
             if st.button("Supprimer", key=f"del_{idx}"):
                 oidx = df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2
-                sheet_livres.delete_rows(oidx); st.rerun()
+                sheet_livres.delete_rows(oidx); refresh()
 
 # --- 4. AJOUTER ---
 with onglets[3]:
@@ -167,16 +176,16 @@ with onglets[3]:
             n = st.select_slider("Ma note", options=["📚","📚📚","📚📚📚","📚📚📚📚"])
             c = st.text_area("Mon Avis (Proprio)")
             if st.form_submit_button("Ajouter"):
-                sheet_livres.append_row([t, a, utilisateur, c, "Libre", "", n, datetime.now().strftime("%Y-%m-%d"), ""]); st.rerun()
+                sheet_livres.append_row([t, a, utilisateur, c, "Libre", "", n, datetime.now().strftime("%Y-%m-%d"), ""]); refresh()
     else:
         st.link_button("📥 Modèle Excel", "https://raw.githubusercontent.com/didierjaccoud144-bit/BiblioClub/main/BiblioMod.xlsx")
         up = st.file_uploader("Fichier .xlsx", type="xlsx")
         if up and st.button("Lancer l'import"):
             df_i = pd.read_excel(up).fillna("")
             for _, r in df_i.iterrows():
-                sheet_livres.append_row([r['Titre'], r.get('Auteur',''), utilisateur, r.get('Avis',''), "Libre", "", r.get('Note',''), datetime.now().strftime("%Y-%m-%d"), ""]); st.rerun()
+                sheet_livres.append_row([r['Titre'], r.get('Auteur',''), utilisateur, r.get('Avis',''), "Libre", "", r.get('Note',''), datetime.now().strftime("%Y-%m-%d"), ""]); refresh()
 
-# --- 5. AJOUTER UN MEMBRE (SI ADMIN) ---
+# --- 5. AJOUTER UN MEMBRE ---
 idx_guide = 4
 if utilisateur in ["Didier", "Amélie"]:
     idx_guide = 5
@@ -185,7 +194,7 @@ if utilisateur in ["Didier", "Amélie"]:
         with st.form("nm"):
             n, t, p, r = st.text_input("Prénom"), st.text_input("Tél"), st.text_input("Lieu"), st.text_input("Retrait")
             if st.form_submit_button("Enregistrer"):
-                sheet_membres.append_row([n, t, "", p, r]); st.success("Fait !"); st.rerun()
+                sheet_membres.append_row([n, t, "", p, r]); st.success("Fait !"); refresh()
 
 # --- DERNIER ONGLET : MODE D'EMPLOI ---
 with onglets[idx_guide]:
