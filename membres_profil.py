@@ -16,16 +16,7 @@ MEMBRES_FIXES = {
         'Position': 'Colombier'
     },
     # AJOUTE LES 8 AUTRES ICI
-    'Aline': {'Avatar': '', 'Téléphone': '', 'Infos_Retrait': '', 'Position': 'Peseux'},
-    'Bastien': {'Avatar': '', 'Téléphone': '', 'Infos_Retrait': '', 'Position': 'Bôle'},
-    'Camille': {'Avatar': '', 'Téléphone': '', 'Infos_Retrait': '', 'Position': 'Rochefort'},
-    'Damien': {'Avatar': '', 'Téléphone': '', 'Infos_Retrait': '', 'Position': 'Milvignes'},
-    'Elodie': {'Avatar': '', 'Téléphone': '', 'Infos_Retrait': '', 'Position': 'Cortaillod'},
-    'François': {'Avatar': '', 'Téléphone': '', 'Infos_Retrait': '', 'Position': 'Boudry'},
-    'Gilles': {'Avatar': '', 'Téléphone': '', 'Infos_Retrait': '', 'Position': 'Gorgier'},
-    'Hélène': {'Avatar': '', 'Téléphone': '', 'Infos_Retrait': '', 'Position': 'Colombier'},
-    'Ibrahim': {'Avatar': '', 'Téléphone': '', 'Infos_Retrait': '', 'Position': 'Colombier'},
-    'Jean': {'Avatar': '', 'Téléphone': '', 'Infos_Retrait': '', 'Position': 'Colombier'}
+    
 }
 
 # La liste des 12 avatars Notion que tu m'as envoyés (à remplir avec tes 12 liens)
