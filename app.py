@@ -44,7 +44,7 @@ def show_avatar(url, size=40):
         st.markdown(f'<img src="{url}" style="width:{size}px; height:{size}px; border-radius:50%; margin-right:10px;">', unsafe_allow_html=True)
 
 # --- INTERFACE ---
-st.title("📚 Le Biblio Club")
+st.title("📚 La boîte à livres de Méli-Mélo")
 
 # Sélection Utilisateur (visible sur mobile)
 liste_membres = get_liste_membres_fixes()
