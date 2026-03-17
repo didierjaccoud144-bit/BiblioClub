@@ -5,17 +5,22 @@ import pandas as pd
 MEMBRES_FIXES = {
     'Didier': {
         'Avatar': 'https://storage.googleapis.com/notion-avatars/b/4/9/4f7c2a71a94d86b5155f9c42636a0d24_1603590500742.png',
-        'Téléphone': '+41791234567',
-        'Infos_Retrait': 'au bureau lundi',
+        'Téléphone': '+41795351084',
+        'Infos_Retrait': 'A définir',
         'Position': 'Colombier'
     },
     'Amélie': {
         'Avatar': 'https://storage.googleapis.com/notion-avatars/b/4/9/4f7c2a71a94d86b5155f9c42636a0d24_1603590500742.png',
-        'Téléphone': '+41797654321',
-        'Infos_Retrait': 'à mon domicile le soir',
+        'Téléphone': '+41795529108',
+        'Infos_Retrait': 'A définir',
         'Position': 'Colombier'
     },
-    # AJOUTE LES 8 AUTRES ICI
+      'Johanna': {
+        'Avatar': 'https://storage.googleapis.com/notion-avatars/b/4/9/4f7c2a71a94d86b5155f9c42636a0d24_1603590500742.png',
+        'Téléphone': '+41789267144',
+        'Infos_Retrait': 'A définir',
+        'Position': 'Yverdon'
+    },# AJOUTE LES 8 AUTRES ICI
     
 }
 
