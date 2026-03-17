@@ -3,7 +3,7 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 import urllib.parse
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # Importation du fichier de profil membres
 from membres_profil import get_membre_info, get_liste_membres_fixes
@@ -82,49 +82,45 @@ onglets = st.tabs(onglets_noms)
 
 # --- 1. BIBLIOTHÈQUE ---
 with onglets[0]:
-    if df_livres.empty:
-        st.info("La boîte est vide.")
-    else:
-        tri = st.selectbox("Trier par", ["Derniers ajouts", "Note", "Titre (A-Z)"])
-        df_tri = df_livres.copy()
-        if tri == "Titre (A-Z)": df_tri = df_tri.sort_values(by=COL["Titre"])
-        elif tri == "Note": df_tri = df_tri.sort_values(by=COL["Note"], ascending=False)
-        else: df_tri = df_tri.iloc[::-1]
+    recherche = st.text_input("🔍 Rechercher un livre ou un auteur...", "").lower()
+    tri = st.selectbox("Trier par", ["Derniers ajouts", "Note", "Titre (A-Z)"])
+    df_tri = df_livres.copy()
+    if recherche:
+        df_tri = df_tri[df_tri[COL["Titre"]].str.lower().str.contains(recherche) | df_tri[COL["Auteur"]].str.lower().str.contains(recherche)]
+    if tri == "Titre (A-Z)": df_tri = df_tri.sort_values(by=COL["Titre"])
+    elif tri == "Note": df_tri = df_tri.sort_values(by=COL["Note"], ascending=False)
+    else: df_tri = df_tri.iloc[::-1]
 
-        for idx, row in df_tri.iterrows():
-            statut = str(row.get(COL["Statut"], 'Libre')).strip() or "Libre"
-            p_livre = str(row[COL["Proprio"]]).strip()
-            emoji, color = ("📗", "green") if statut == "Libre" else (("🧡", "orange") if statut == "Demandé" else ("📕", "red"))
-            
-            with st.container():
-                c1, c2 = st.columns([1, 4])
-                with c1: st.title(emoji)
-                with c2:
-                    st.markdown(f"### {row[COL['Titre']]} {row.get(COL['Note'], '')} :{color}[ ({statut})]")
-                    st.write(f"**{row[COL['Auteur']]}** | **Propriétaire :** {p_livre}")
-                    if row.get(COL['Avis']): st.success(f"⭐ **Proprio :** {row[COL['Avis']]}")
-                    if row.get(COL['Avis_Lecteurs']):
-                        with st.expander("💬 Avis des lecteurs"): st.markdown(row[COL['Avis_Lecteurs']])
-                    
-                    with st.expander("📝 Donner mon avis"):
-                        n_l = st.select_slider("Ma Note", options=["📚","📚📚","📚📚📚","📚📚📚📚"], key=f"n_{idx}")
-                        c_l = st.text_area("Commentaire", key=f"c_{idx}")
-                        if st.button("Publier", key=f"p_{idx}"):
-                            oidx = int(df_livres.index[df_livres[COL['Titre']] == row[COL['Titre']]][0] + 2)
-                            total = (str(row.get(COL["Avis_Lecteurs"], "")) + f"\n\n**{utilisateur}** ({n_l}) : {c_l}").strip()
-                            sheet_livres.update_cell(oidx, 9, total)
-                            refresh()
-
-                    if statut == "Libre" and p_livre != utilisateur.strip():
-                        if st.button(f"Demander", key=f"req_{idx}"):
-                            oidx = int(df_livres.index[df_livres[COL['Titre']] == row[COL['Titre']]][0] + 2)
-                            sheet_livres.update_cell(oidx, 5, "Demandé")
-                            sheet_livres.update_cell(oidx, 6, utilisateur); refresh()
-                st.write("---")
+    for idx, row in df_tri.iterrows():
+        statut = str(row.get(COL["Statut"], 'Libre')).strip() or "Libre"
+        p_livre = str(row[COL["Proprio"]]).strip()
+        # CHANGEMENT : ⏳ pour Demandé
+        emoji, color = ("📗", "green") if statut == "Libre" else (("⏳", "orange") if statut == "Demandé" else ("📕", "red"))
+        with st.container():
+            c1, c2 = st.columns([1, 4])
+            with c1: st.title(emoji)
+            with c2:
+                st.markdown(f"### {row[COL['Titre']]} {row.get(COL['Note'], '')} :{color}[ ({statut})]")
+                st.write(f"**{row[COL['Auteur']]}** | **Propriétaire :** {p_livre}")
+                if row.get(COL['Avis']): st.success(f"⭐ **Proprio :** {row[COL['Avis']]}")
+                if row.get(COL['Avis_Lecteurs']):
+                    with st.expander("💬 Avis des lecteurs"): st.markdown(row[COL['Avis_Lecteurs']])
+                with st.expander("📝 Donner mon avis"):
+                    n_l = st.select_slider("Ma Note", options=["📚","📚📚","📚📚📚","📚📚📚📚"], key=f"n_{idx}")
+                    c_l = st.text_area("Commentaire", key=f"c_{idx}")
+                    if st.button("Publier", key=f"p_{idx}"):
+                        oidx = int(df_livres.index[df_livres[COL['Titre']] == row[COL['Titre']]][0] + 2)
+                        total = (str(row.get(COL["Avis_Lecteurs"], "")) + f"\n\n**{utilisateur}** ({n_l}) : {c_l}").strip()
+                        sheet_livres.update_cell(oidx, 9, total); refresh()
+                if statut == "Libre" and p_livre != utilisateur.strip():
+                    if st.button(f"Demander", key=f"req_{idx}"):
+                        oidx = int(df_livres.index[df_livres[COL['Titre']] == row[COL['Titre']]][0] + 2)
+                        sheet_livres.update_cell(oidx, 5, "Demandé"); sheet_livres.update_cell(oidx, 6, utilisateur); refresh()
+            st.write("---")
 
 # --- 2. EMPRUNTS ---
 with onglets[1]:
-    st.subheader("🤝 Suivi des emprunts")
+    st.subheader("🤝 Suivi des demandes")
     res = df_livres[(df_livres[COL["Proprio"]] == utilisateur) & (df_livres[COL["Statut"]].isin(['Demandé', 'Emprunté']))]
     if not res.empty:
         for idx, r in res.iterrows():
@@ -140,8 +136,7 @@ with onglets[1]:
                 with col2:
                     if st.button(f"❌ Décliner", key=f"d_{idx}"):
                         oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
-                        sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, "")
-                        st.link_button("📱 WhatsApp (Refus)", envoyer_whatsapp(f"Désolé {emp}, pas dispo pour '{r[COL['Titre']]}'."))
+                        sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, ""); refresh()
             elif r[COL["Statut"]] == "Emprunté":
                 if st.button(f"🔄 Rendu", key=f"r_{idx}"):
                     oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
@@ -151,19 +146,33 @@ with onglets[1]:
 # --- 3. PROFIL ---
 with onglets[2]:
     st.subheader(f"👤 {utilisateur}")
+    st.markdown("### 📦 Mes livres en voyage")
+    mes_prets = df_livres[(df_livres[COL["Proprio"]] == utilisateur) & (df_livres[COL["Statut"]].isin(['Demandé', 'Emprunté']))]
+    if not mes_prets.empty:
+        recap = mes_prets[[COL["Titre"], COL["Emprunteur"], COL["Statut"]]].copy()
+        # CHANGEMENT : Mise à jour du libellé ici aussi
+        recap[COL["Statut"]] = recap[COL["Statut"]].replace({"Demandé": "⏳ En attente", "Emprunté": "📕 Chez l'emprunteur"})
+        st.table(recap)
+    else: st.info("Tous tes livres sont chez toi ! 🏠")
+    
+    st.write("---")
+    st.markdown("#### 📢 Suggérer un membre")
     with st.form("sugg"):
-        s = st.text_input("Suggérer un nouveau membre")
+        s = st.text_input("Nom & Prénom")
         if st.form_submit_button("WhatsApp"):
             st.link_button("📱 Envoyer", envoyer_whatsapp(f"Sugg : {s}"))
     st.write("---")
+    st.markdown("#### 📚 Ma collection complète")
     mes_l = df_livres[df_livres[COL["Proprio"]] == utilisateur]
     for idx, r in mes_l.iterrows():
-        with st.expander(f"📙 {r[COL['Titre']]}"):
+        # CHANGEMENT : Icône ⏳ ici
+        stat_label = "⏳ Demandé" if r[COL['Statut']] == "Demandé" else r[COL['Statut']]
+        with st.expander(f"📙 {r[COL['Titre']]} ({stat_label})"):
             if st.button("Supprimer", key=f"del_{idx}"):
                 oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
                 sheet_livres.delete_rows(oidx); refresh()
 
-# --- 4. AJOUTER (FIX IMPORT) ---
+# --- 4. AJOUTER ---
 with onglets[3]:
     mode = st.radio("", ["✅ Manuel", "📤 Import Excel"], horizontal=True)
     if mode == "✅ Manuel":
@@ -177,27 +186,11 @@ with onglets[3]:
         if up and st.button("Lancer l'import"):
             try:
                 df_i = pd.read_excel(up).fillna("")
-                dt_now = datetime.now().strftime("%Y-%m-%d")
-                # On prépare une liste de lignes à ajouter
-                lignes_a_ajouter = []
-                for _, r_import in df_i.iterrows():
-                    lignes_a_ajouter.append([
-                        str(r_import['Titre']), 
-                        str(r_import.get('Auteur','')), 
-                        utilisateur, 
-                        str(r_import.get('Avis','')), 
-                        "Libre", "", 
-                        str(r_import.get('Note','📚📚')), 
-                        dt_now, ""
-                    ])
-                # AJOUT MASSIF (Plus stable et rapide)
-                sheet_livres.append_rows(lignes_a_ajouter)
-                st.success(f"{len(lignes_a_ajouter)} livres importés avec succès !")
-                refresh() # Refresh SEULEMENT à la fin
-            except Exception as e:
-                st.error(f"Erreur lors de l'import : {e}")
+                lignes = [[str(r_i['Titre']), str(r_i.get('Auteur','')), utilisateur, str(r_i.get('Avis','')), "Libre", "", str(r_i.get('Note','📚📚')), datetime.now().strftime("%Y-%m-%d"), ""] for _, r_i in df_i.iterrows()]
+                sheet_livres.append_rows(lignes); refresh()
+            except Exception as e: st.error(f"Erreur : {e}")
 
-# --- GÉRANCE & MODE D'EMPLOI ---
+# --- 5. GÉRANCE & GUIDE ---
 idx_guide = 4
 if utilisateur in ["Didier", "Amélie"]:
     idx_guide = 5
@@ -212,6 +205,13 @@ with onglets[idx_guide]:
     st.subheader("📖 Guide complet")
     with st.expander("📱 Installation", expanded=True): st.markdown("* **iPhone** : Partage -> « Sur l'écran d'accueil ».\n* **Android** : 3 petits points -> « Installer ».")
     with st.expander("🔍 Emprunter"): st.markdown("Clique sur **Demander** sur un livre vert.")
+    # CHANGEMENT : Légende mise à jour avec ⏳
+    with st.expander("🎨 Légende des couleurs"):
+        st.markdown("""
+        * 📗 **Vert** : Disponible immédiatement.
+        * ⏳ **Sablier** : Demande envoyée, en attente de réponse du proprio.
+        * 📕 **Rouge** : Actuellement en prêt chez un membre.
+        """)
     with st.expander("🤝 Prêter"): st.markdown("Valide ou décline les demandes dans l'onglet Emprunts.")
     with st.expander("💬 Avis"): st.markdown("Partage tes impressions sous chaque livre !")
 
