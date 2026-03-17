@@ -80,9 +80,9 @@ onglets_noms.append("❓ Mode d'emploi")
 
 onglets = st.tabs(onglets_noms)
 
-# --- 1. BIBLIOTHÈQUE ---
+# --- 1. BIBLIOTHÈQUE (VERSION COMPACTE) ---
 with onglets[0]:
-    recherche = st.text_input("🔍 Rechercher un titre ou un auteur...", "").lower()
+    recherche = st.text_input("🔍 Rechercher...", "").lower()
     tri = st.selectbox("Trier par", ["Derniers ajouts", "Note", "Titre (A-Z)"])
     df_tri = df_livres.copy()
     if recherche:
@@ -95,27 +95,36 @@ with onglets[0]:
         statut = str(row.get(COL["Statut"], 'Libre')).strip() or "Libre"
         p_livre = str(row[COL["Proprio"]]).strip()
         emoji, color = ("📗", "green") if statut == "Libre" else (("⏳", "orange") if statut == "Demandé" else ("📕", "red"))
+        
         with st.container():
-            c1, c2 = st.columns([1, 4])
-            with c1: st.title(emoji)
-            with c2:
-                st.markdown(f"### {row[COL['Titre']]} {row.get(COL['Note'], '')} :{color}[ ({statut})]")
-                st.write(f"**{row[COL['Auteur']]}** | **Propriétaire :** {p_livre}")
-                if row.get(COL['Avis']): st.success(f"⭐ **Proprio :** {row[COL['Avis']]}")
-                if row.get(COL['Avis_Lecteurs']):
-                    with st.expander("💬 Avis des lecteurs"): st.markdown(row[COL['Avis_Lecteurs']])
-                with st.expander("📝 Mon avis"):
-                    n_l = st.select_slider("Note", options=["📚","📚📚","📚📚📚","📚📚📚📚"], key=f"n_{idx}")
-                    c_l = st.text_area("Commentaire", key=f"c_{idx}")
-                    if st.button("Publier", key=f"p_{idx}"):
-                        oidx = int(df_livres.index[df_livres[COL['Titre']] == row[COL['Titre']]][0] + 2)
-                        total = (str(row.get(COL["Avis_Lecteurs"], "")) + f"\n\n**{utilisateur}** ({n_l}) : {c_l}").strip()
-                        sheet_livres.update_cell(oidx, 9, total); refresh()
+            # Affichage Compact sur une ligne de titre
+            st.markdown(f"#### {emoji} {row[COL['Titre']]} {row.get(COL['Note'], '')}")
+            st.markdown(f"*{row[COL['Auteur']]}* — Proprio : **{p_livre}** | :{color}[**({statut})**]")
+            
+            # Avis et Actions en colonnes pour gagner de la place
+            c_actions, c_avis = st.columns([1.5, 3])
+            
+            with c_actions:
                 if statut == "Libre" and p_livre != utilisateur.strip():
                     if st.button(f"Demander", key=f"req_{idx}"):
                         oidx = int(df_livres.index[df_livres[COL['Titre']] == row[COL['Titre']]][0] + 2)
                         sheet_livres.update_cell(oidx, 5, "Demandé"); sheet_livres.update_cell(oidx, 6, utilisateur); refresh()
-            st.write("---")
+                
+                if st.checkbox("📝 Avis/Note", key=f"chk_{idx}"):
+                    n_l = st.select_slider("Ma Note", options=["📚","📚📚","📚📚📚","📚📚📚📚"], key=f"n_{idx}")
+                    c_l = st.text_area("Retour", key=f"c_{idx}", height=70)
+                    if st.button("Publier", key=f"p_{idx}"):
+                        oidx = int(df_livres.index[df_livres[COL['Titre']] == row[COL['Titre']]][0] + 2)
+                        total = (str(row.get(COL["Avis_Lecteurs"], "")) + f"\n\n**{utilisateur}** ({n_l}) : {c_l}").strip()
+                        sheet_livres.update_cell(oidx, 9, total); refresh()
+
+            with c_avis:
+                if row.get(COL['Avis']):
+                    st.caption(f"⭐ **Proprio :** {row[COL['Avis']]}")
+                if row.get(COL['Avis_Lecteurs']):
+                    with st.expander("💬 Avis lecteurs"): st.markdown(row[COL['Avis_Lecteurs']])
+            
+            st.markdown("<hr style='margin:10px 0px'>", unsafe_allow_html=True)
 
 # --- 2. EMPRUNTS ---
 with onglets[1]:
@@ -124,7 +133,7 @@ with onglets[1]:
     if not res.empty:
         for idx, r in res.iterrows():
             emp = r[COL["Emprunteur"]]
-            st.warning(f"🔔 **{emp}** souhaite emprunter : **{r[COL['Titre']]}**")
+            st.warning(f"🔔 **{emp}** attend : **{r[COL['Titre']]}**")
             if r[COL["Statut"]] == "Demandé":
                 col1, col2 = st.columns(2)
                 with col1:
@@ -133,50 +142,40 @@ with onglets[1]:
                         sheet_livres.update_cell(oidx, 5, "Emprunté")
                         st.link_button("📱 WhatsApp", envoyer_whatsapp(f"C'est OK pour '{r[COL['Titre']]}'. On s'organise ?"))
                 with col2:
-                    if st.button(f"❌ Refuser", key=f"d_{idx}"):
+                    if st.button(f"❌ Décliner", key=f"d_{idx}"):
                         oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
                         sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, ""); refresh()
             elif r[COL["Statut"]] == "Emprunté":
-                if st.button(f"🔄 Marquer comme rendu", key=f"r_{idx}"):
+                if st.button(f"🔄 Rendu", key=f"r_{idx}"):
                     oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
                     sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, ""); refresh()
-    else: st.write("Aucune demande ou prêt en cours.")
+    else: st.write("Aucune demande en attente.")
 
 # --- 3. PROFIL ---
 with onglets[2]:
     st.subheader(f"👤 Profil de {utilisateur}")
-    
-    # --- SECTION A : MES LIVRES PRÊTÉS (Je suis proprio) ---
-    st.markdown("### 📤 Mes livres en voyage (Prêts)")
+    st.markdown("### 📤 Prêts (Livres sortis)")
     mes_prets = df_livres[(df_livres[COL["Proprio"]] == utilisateur) & (df_livres[COL["Statut"]].isin(['Demandé', 'Emprunté']))]
     if not mes_prets.empty:
-        recap_p = mes_prets[[COL["Titre"], COL["Emprunteur"], COL["Statut"]]].copy()
-        recap_p[COL["Statut"]] = recap_p[COL["Statut"]].replace({"Demandé": "⏳ Demande reçue", "Emprunté": "📕 Chez l'emprunteur"})
-        st.table(recap_p)
-    else: st.info("Aucun de vos livres n'est en voyage. 🏠")
-
-    # --- SECTION B : MES LIVRES EMPRUNTÉS (Je suis emprunteur) ---
-    st.markdown("### 📥 Les livres que j'ai en emprunt")
+        st.table(mes_prets[[COL["Titre"], COL["Emprunteur"], COL["Statut"]]])
+    
+    st.markdown("### 📥 Emprunts (Livres chez moi)")
     mes_emprunts = df_livres[(df_livres[COL["Emprunteur"]] == utilisateur) & (df_livres[COL["Statut"]].isin(['Demandé', 'Emprunté']))]
     if not mes_emprunts.empty:
-        recap_e = mes_emprunts[[COL["Titre"], COL["Proprio"], COL["Statut"]]].copy()
-        recap_e[COL["Statut"]] = recap_e[COL["Statut"]].replace({"Demandé": "⏳ En attente de validation", "Emprunté": "🏠 Chez moi"})
-        st.table(recap_e)
-    else: st.info("Vous n'avez aucun livre en emprunt actuellement. 📖")
+        st.table(mes_emprunts[[COL["Titre"], COL["Proprio"], COL["Statut"]]])
     
     st.write("---")
-    st.markdown("#### 📢 Suggérer un nouveau membre")
+    st.markdown("#### 📢 Suggérer un membre")
     with st.form("sugg"):
         s = st.text_input("Nom, Prénom")
-        if st.form_submit_button("Envoyer"):
+        if st.form_submit_button("Préparer WhatsApp"):
             st.link_button("📱 WhatsApp Admin", envoyer_whatsapp(f"Sugg : {s}"))
     
     st.write("---")
-    st.markdown("#### 📚 Gérer ma collection")
+    st.markdown("#### 📚 Ma collection")
     mes_l = df_livres[df_livres[COL["Proprio"]] == utilisateur]
     for idx, r in mes_l.iterrows():
-        st_lbl = "⏳ Demandé" if r[COL['Statut']] == "Demandé" else r[COL['Statut']]
-        with st.expander(f"📙 {r[COL['Titre']]} ({st_lbl})"):
+        with st.expander(f"📙 {r[COL['Titre']]} ({r[COL['Statut']]})"):
             if st.button("Supprimer", key=f"del_{idx}"):
                 oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
                 sheet_livres.delete_rows(oidx); refresh()
@@ -191,34 +190,60 @@ with onglets[3]:
                 sheet_livres.append_row([t, a, utilisateur, c, "Libre", "", n, datetime.now().strftime("%Y-%m-%d"), ""]); refresh()
     else:
         st.link_button("📥 Modèle Excel", "https://raw.githubusercontent.com/didierjaccoud144-bit/BiblioClub/main/BiblioMod.xlsx")
-        up = st.file_uploader("Fichier Excel", type="xlsx")
-        if up and st.button("Importer"):
+        up = st.file_uploader("Fichier", type="xlsx")
+        if up and st.button("Lancer l'import"):
             try:
                 df_i = pd.read_excel(up).fillna("")
                 lignes = [[str(ri['Titre']), str(ri.get('Auteur','')), utilisateur, str(ri.get('Avis','')), "Libre", "", str(ri.get('Note','📚📚')), datetime.now().strftime("%Y-%m-%d"), ""] for _, ri in df_i.iterrows()]
                 sheet_livres.append_rows(lignes); refresh()
             except Exception as e: st.error(f"Erreur : {e}")
 
-# --- 5. GÉRANCE & GUIDE ---
+# --- 5. GÉRANCE & MODE D'EMPLOI DÉTAILLÉ ---
 idx_guide = 4
 if utilisateur in ["Didier", "Amélie"]:
     idx_guide = 5
     with onglets[4]:
-        st.subheader("👤 Administration")
+        st.subheader("👤 Ajouter un membre")
         with st.form("nm"):
             n, t, p, r = st.text_input("Prénom"), st.text_input("Tél"), st.text_input("Lieu"), st.text_input("Retrait")
             if st.form_submit_button("Enregistrer"):
                 sheet_membres.append_row([n, t, "", p, r]); st.success("Fait !"); refresh()
 
 with onglets[idx_guide]:
-    st.title("📖 Mode d'emploi")
-    with st.expander("📱 1. Installation", expanded=True):
-        st.markdown("* **iPhone** : Safari -> Partage -> « Sur l'écran d'accueil ».\n* **Android** : Chrome -> 3 points -> « Installer ».")
-    with st.expander("🔍 2. Légende des couleurs"):
-        st.markdown("* 📗 **Vert** : Libre.\n* ⏳ **Sablier** : En attente du proprio.\n* 📕 **Rouge** : Prêté.")
-    with st.expander("🤝 3. Prêter / Emprunter"):
-        st.markdown("Tout se passe par **WhatsApp** une fois que le propriétaire a validé la demande.")
-    with st.expander("📢 4. Suggérer un membre"):
-        st.markdown("Utilisez le formulaire dans **Mon Profil** pour proposer des amis à Didier ou Amélie.")
+    st.title("📖 Mode d'emploi Méli-Mélo")
+    
+    with st.expander("📱 1. Installation (Très recommandé)", expanded=True):
+        st.markdown("""
+        Pour utiliser l'application comme une vraie appli téléphone :
+        * **iPhone (Safari)** : Cliquez sur l'icône **Partage** (carré avec flèche vers le haut) -> Faites défiler et cliquez sur **« Sur l'écran d'accueil »**.
+        * **Android (Chrome)** : Cliquez sur les **3 petits points** en haut à droite -> Cliquez sur **« Installer l'application »**.
+        """)
+
+    with st.expander("🔍 2. Légende et Recherche"):
+        st.markdown("""
+        * **Recherche** : Tapez un mot-clé pour filtrer instantanément la liste.
+        * 📗 **Vert** : Disponible ! Cliquez sur "Demander" pour lancer l'emprunt.
+        * ⏳ **Sablier** : Demande envoyée. On attend que le propriétaire valide.
+        * 📕 **Rouge** : Le livre est actuellement chez quelqu'un.
+        """)
+
+    with st.expander("➕ 3. Ajouter vos livres"):
+        st.markdown("""
+        * **Manuel** : Idéal pour un livre de temps en temps.
+        * **Import Excel** : Si vous avez beaucoup de livres, téléchargez notre modèle, remplissez-le et envoyez-le. Tout apparaîtra d'un coup !
+        """)
+
+    with st.expander("🤝 4. Emprunter / Prêter (Cycle WhatsApp)"):
+        st.markdown("""
+        1. **Demande** : L'emprunteur clique sur "Demander".
+        2. **Validation** : Le proprio voit une alerte orange. Il clique sur **✅ Valider**.
+        3. **Contact** : Une fois validé, un bouton **WhatsApp** apparaît. Cliquez dessus pour fixer le RDV !
+        4. **Rendu** : Quand le livre revient, le proprio clique sur **🔄 Rendu** pour le remettre en circulation.
+        """)
+
+    with st.expander("📢 5. Suggérer un membre"):
+        st.markdown("""
+        Dans votre **Profil**, utilisez le formulaire "Suggérer". Cela prépare un message WhatsApp pour Didier ou Amélie afin qu'ils créent le compte.
+        """)
 
 st.caption("Une création DJA’WEB avec l’aide de Gemini IA")
