@@ -108,7 +108,6 @@ with onglets[0]:
                         oidx = int(df_livres.index[df_livres[COL['Titre']] == row[COL['Titre']]][0] + 2)
                         sheet_livres.update_cell(oidx, 5, "Demandé"); sheet_livres.update_cell(oidx, 6, utilisateur); refresh()
                 
-                # REMPLACEMENT DE LA CASE PAR UN EXPANDER "BULLE DE TEXTE"
                 with st.expander("💬 Avis/Note"):
                     n_l = st.select_slider("Ma Note", options=["📚","📚📚","📚📚📚","📚📚📚📚"], key=f"n_{idx}")
                     c_l = st.text_area("Mon retour", key=f"c_{idx}", height=70)
@@ -141,7 +140,7 @@ with onglets[1]:
                         sheet_livres.update_cell(oidx, 5, "Emprunté")
                         st.link_button("📱 WhatsApp", envoyer_whatsapp(f"C'est OK pour '{r[COL['Titre']]}'. On s'organise ?"))
                 with col2:
-                    if st.button(f"❌ Décliner", key=f"d_{idx}"):
+                    if st.button(f"❌ Refuser", key=f"d_{idx}"):
                         oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
                         sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, ""); refresh()
             elif r[COL["Statut"]] == "Emprunté":
@@ -153,15 +152,20 @@ with onglets[1]:
 # --- 3. PROFIL ---
 with onglets[2]:
     st.subheader(f"👤 Profil de {utilisateur}")
-    st.markdown("### 📤 Prêts (Livres sortis)")
+    
+    st.markdown("### 📤 Mes livres en voyage (Prêts)")
     mes_prets = df_livres[(df_livres[COL["Proprio"]] == utilisateur) & (df_livres[COL["Statut"]].isin(['Demandé', 'Emprunté']))]
     if not mes_prets.empty:
         st.table(mes_prets[[COL["Titre"], COL["Emprunteur"], COL["Statut"]]])
-    
-    st.markdown("### 📥 Emprunts (Livres chez moi)")
+    else: st.info("Aucun de vos livres n'est prêté actuellement. 🏠")
+
+    st.markdown("### 📥 Les livres que j'ai en emprunt")
     mes_emprunts = df_livres[(df_livres[COL["Emprunteur"]] == utilisateur) & (df_livres[COL["Statut"]].isin(['Demandé', 'Emprunté']))]
     if not mes_emprunts.empty:
-        st.table(mes_emprunts[[COL["Titre"], COL["Proprio"], COL["Statut"]]])
+        recap_e = mes_emprunts[[COL["Titre"], COL["Proprio"], COL["Statut"]]].copy()
+        recap_e[COL["Statut"]] = recap_e[COL["Statut"]].replace({"Demandé": "⏳ En attente", "Emprunté": "🏠 Chez moi"})
+        st.table(recap_e)
+    else: st.info("Vous n'avez aucun livre en emprunt. 📖")
     
     st.write("---")
     st.markdown("#### 📢 Suggérer un membre")
@@ -214,8 +218,8 @@ with onglets[idx_guide]:
     with st.expander("📱 1. Installation (Très recommandé)", expanded=True):
         st.markdown("""
         Pour utiliser l'application comme une vraie appli téléphone :
-        * **iPhone (Safari)** : Cliquez sur l'icône **Partage** (carré avec flèche vers le haut) -> Fais défiler et clique sur **« Sur l'écran d'accueil »**.
-        * **Android (Chrome)** : Cliquez sur les **3 petits points** en haut à droite -> Cliquez sur **« Installer l'application »**.
+        * **Sur iPhone (Safari)** : Cliquez sur l'icône **Partage** (carré avec flèche vers le haut) -> Faites défiler et cliquez sur **« Sur l'écran d'accueil »**.
+        * **Sur Android (Chrome)** : Cliquez sur les **3 petits points** en haut à droite -> Cliquez sur **« Installer l'application »**.
         """)
 
     with st.expander("🔍 2. Légende et Recherche"):
@@ -245,6 +249,14 @@ with onglets[idx_guide]:
         2. **Validation** : Le proprio voit une alerte orange. Il clique sur **✅ Valider**.
         3. **Contact** : Une fois validé, un bouton **WhatsApp** apparaît. Cliquez dessus pour fixer le RDV !
         4. **Rendu** : Quand le livre revient, le proprio clique sur **🔄 Rendu** pour le remettre en circulation.
+        """)
+
+    with st.expander("👤 6. Mon Tableau de Bord (Profil)"):
+        st.markdown("""
+        L'onglet **Mon Profil** vous permet de tout suivre en un coup d'œil :
+        * **Mes livres en voyage** : La liste des livres que vous avez prêtés, avec le nom de l'emprunteur et le statut (Demande reçue ⏳ ou Chez lui 📕).
+        * **Les livres que j'ai en emprunt** : La liste des livres que vous avez ramassés chez les autres (ou vos demandes en cours), avec le nom du propriétaire.
+        * **Ma collection** : La liste complète de vos livres enregistrés. Vous pouvez en supprimer un ici si vous ne voulez plus le partager.
         """)
 
 st.caption("Une création DJA’WEB avec l’aide de Gemini IA")
