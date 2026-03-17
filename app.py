@@ -110,16 +110,16 @@ with onglets[0]:
                         n_l = st.select_slider("Ma Note", options=["📚","📚📚","📚📚📚","📚📚📚📚"], key=f"n_{idx}")
                         c_l = st.text_area("Commentaire", key=f"c_{idx}")
                         if st.button("Publier", key=f"p_{idx}"):
-                            oidx = df_livres.index[df_livres[COL['Titre']] == row[COL['Titre']]][0] + 2
+                            oidx = int(df_livres.index[df_livres[COL['Titre']] == row[COL['Titre']]][0] + 2)
                             total = (str(row.get(COL["Avis_Lecteurs"], "")) + f"\n\n**{utilisateur}** ({n_l}) : {c_l}").strip()
-                            sheet_livres.update_cell(int(oidx), 9, total)
+                            sheet_livres.update_cell(oidx, 9, total)
                             refresh()
 
                     if statut == "Libre" and p_livre != utilisateur.strip():
                         if st.button(f"Demander", key=f"req_{idx}"):
-                            oidx = df_livres.index[df_livres[COL['Titre']] == row[COL['Titre']]][0] + 2
-                            sheet_livres.update_cell(int(oidx), 5, "Demandé")
-                            sheet_livres.update_cell(int(oidx), 6, utilisateur); refresh()
+                            oidx = int(df_livres.index[df_livres[COL['Titre']] == row[COL['Titre']]][0] + 2)
+                            sheet_livres.update_cell(oidx, 5, "Demandé")
+                            sheet_livres.update_cell(oidx, 6, utilisateur); refresh()
                 st.write("---")
 
 # --- 2. EMPRUNTS ---
@@ -134,21 +134,21 @@ with onglets[1]:
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.button(f"✅ Valider", key=f"v_{idx}"):
-                        oidx = df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2
-                        sheet_livres.update_cell(int(oidx), 5, "Emprunté")
+                        oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
+                        sheet_livres.update_cell(oidx, 5, "Emprunté")
                         st.link_button("📱 WhatsApp", envoyer_whatsapp(f"C'est OK pour '{r[COL['Titre']]}'. On s'organise ?"))
                 with col2:
                     if st.button(f"❌ Décliner", key=f"d_{idx}"):
-                        oidx = df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2
-                        sheet_livres.update_cell(int(oidx), 5, "Libre"); sheet_livres.update_cell(int(oidx), 6, "")
+                        oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
+                        sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, "")
                         st.link_button("📱 WhatsApp (Refus)", envoyer_whatsapp(f"Désolé {emp}, pas dispo pour '{r[COL['Titre']]}'."))
             elif r[COL["Statut"]] == "Emprunté":
                 if st.button(f"🔄 Rendu", key=f"r_{idx}"):
-                    oidx = df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2
-                    sheet_livres.update_cell(int(oidx), 5, "Libre"); sheet_livres.update_cell(int(oidx), 6, ""); refresh()
+                    oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
+                    sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, ""); refresh()
     else: st.write("Aucune demande en attente.")
 
-# --- 3. PROFIL (CORRECTIONS SUPPRESSION) ---
+# --- 3. PROFIL ---
 with onglets[2]:
     st.subheader(f"👤 {utilisateur}")
     with st.form("sugg"):
@@ -160,12 +160,10 @@ with onglets[2]:
     for idx, r in mes_l.iterrows():
         with st.expander(f"📙 {r[COL['Titre']]}"):
             if st.button("Supprimer", key=f"del_{idx}"):
-                # CORRECTION : On force oidx en entier standard pour Google Sheets
                 oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
-                sheet_livres.delete_rows(oidx)
-                refresh()
+                sheet_livres.delete_rows(oidx); refresh()
 
-# --- 4. AJOUTER ---
+# --- 4. AJOUTER (FIX IMPORT) ---
 with onglets[3]:
     mode = st.radio("", ["✅ Manuel", "📤 Import Excel"], horizontal=True)
     if mode == "✅ Manuel":
@@ -176,10 +174,28 @@ with onglets[3]:
     else:
         st.link_button("📥 Modèle Excel", "https://raw.githubusercontent.com/didierjaccoud144-bit/BiblioClub/main/BiblioMod.xlsx")
         up = st.file_uploader("Fichier", type="xlsx")
-        if up and st.button("Importer"):
-            df_i = pd.read_excel(up).fillna("")
-            for _, r in df_i.iterrows():
-                sheet_livres.append_row([r['Titre'], r.get('Auteur',''), utilisateur, r.get('Avis',''), "Libre", "", r.get('Note',''), datetime.now().strftime("%Y-%m-%d"), ""]); refresh()
+        if up and st.button("Lancer l'import"):
+            try:
+                df_i = pd.read_excel(up).fillna("")
+                dt_now = datetime.now().strftime("%Y-%m-%d")
+                # On prépare une liste de lignes à ajouter
+                lignes_a_ajouter = []
+                for _, r_import in df_i.iterrows():
+                    lignes_a_ajouter.append([
+                        str(r_import['Titre']), 
+                        str(r_import.get('Auteur','')), 
+                        utilisateur, 
+                        str(r_import.get('Avis','')), 
+                        "Libre", "", 
+                        str(r_import.get('Note','📚📚')), 
+                        dt_now, ""
+                    ])
+                # AJOUT MASSIF (Plus stable et rapide)
+                sheet_livres.append_rows(lignes_a_ajouter)
+                st.success(f"{len(lignes_a_ajouter)} livres importés avec succès !")
+                refresh() # Refresh SEULEMENT à la fin
+            except Exception as e:
+                st.error(f"Erreur lors de l'import : {e}")
 
 # --- GÉRANCE & MODE D'EMPLOI ---
 idx_guide = 4
