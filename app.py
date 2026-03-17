@@ -28,11 +28,15 @@ except Exception as e:
     st.error(f"Erreur de connexion : {e}")
     st.stop()
 
-# --- DÉTECTION INTELLIGENTE DES COLONNES ---
-cols = df_livres.columns.tolist()
-col_m = next((c for c in cols if "membre" in c.lower() or "proprio" in c.lower()), "Membre")
-col_e = next((c for c in cols if "emprunt" in c.lower() and "statut" not in c.lower()), "Emprunteur")
-col_s = next((c for c in cols if "statut" in c.lower()), "Statut")
+# --- DÉTECTION SÉCURISÉE PAR POSITION ---
+# On récupère les vrais noms des colonnes tels qu'ils arrivent
+cols_reelles = df_livres.columns.tolist()
+
+# On définit les noms en fonction de leur place dans ton Excel (A, B, C, D, E, F)
+# 1:Titre, 2:Auteur, 3:Membre, 4:Avis, 5:Statut, 6:Emprunteur
+col_m = cols_reelles[2] if len(cols_reelles) > 2 else "Membre"
+col_s = cols_reelles[4] if len(cols_reelles) > 4 else "Statut"
+col_e = cols_reelles[5] if len(cols_reelles) > 5 else "Emprunteur"
 
 def envoyer_whatsapp(telephone, message):
     if not telephone: return "#"
@@ -75,16 +79,17 @@ with onglets[0]:
                 
                 if statut == "Libre" and str(row.get(col_m)) != utilisateur:
                     if st.button(f"Demander ce livre", key=f"bib_req_{idx}"):
-                        sheet_livres.update_cell(idx + 2, cols.index(col_s)+1, "Demandé")
-                        sheet_livres.update_cell(idx + 2, cols.index(col_e)+1, utilisateur)
-                        st.success("Demande envoyée ! Go dans 'Emprunts'.")
+                        sheet_livres.update_cell(idx + 2, 5, "Demandé") # Colonne E
+                        sheet_livres.update_cell(idx + 2, 6, utilisateur) # Colonne F
+                        st.success("Demande envoyée !")
                         st.rerun()
             st.write("---")
 
-# --- 2. EMPRUNTS ---
+# --- 2. EMPRUNTS (CORRIGÉ SANS KEYERROR) ---
 with onglets[1]:
     st.subheader("🤝 Gestion des flux")
     
+    # A. Ce que j'ai demandé
     st.markdown("#### 📥 Mes demandes faites")
     mes_emprunts = df_livres[df_livres[col_e] == utilisateur]
     if not mes_emprunts.empty:
@@ -95,23 +100,24 @@ with onglets[1]:
 
     st.write("---")
     
+    # B. Ce que les autres me demandent
     st.markdown("#### 📤 Demandes sur mes livres")
     mes_livres_mouv = df_livres[(df_livres[col_m] == utilisateur) & (df_livres[col_s].isin(['Demandé', 'Emprunté']))]
     if not mes_livres_mouv.empty:
         for idx, row in mes_livres_mouv.iterrows():
-            emprunteur_actuel = row.get(col_e)
-            st.warning(f"🔔 **{emprunteur_actuel}** -> **{row['Titre']}**")
+            le_demandeur = row.get(col_e)
+            st.warning(f"🔔 **{le_demandeur}** -> **{row['Titre']}**")
             
             if row[col_s] == "Demandé":
-                if st.button(f"✅ Valider prêt pour {emprunteur_actuel}", key=f"emp_ok_{idx}"):
-                    sheet_livres.update_cell(idx + 2, cols.index(col_s)+1, "Emprunté")
-                    info_d = get_membre_info(emprunteur_actuel)
-                    msg = f"Hello {emprunteur_actuel} ! Ok pour '{row['Titre']}'. Retrait : {infos_user.get('Infos_Retrait')}"
+                if st.button(f"✅ Valider prêt pour {le_demandeur}", key=f"emp_ok_{idx}"):
+                    sheet_livres.update_cell(idx + 2, 5, "Emprunté")
+                    info_d = get_membre_info(le_demandeur)
+                    msg = f"Hello {le_demandeur} ! Ok pour '{row['Titre']}'. Retrait : {infos_user.get('Infos_Retrait')}"
                     st.link_button("📱 WhatsApp", envoyer_whatsapp(info_d.get('Téléphone',''), msg))
             elif row[col_s] == "Emprunté":
                 if st.button(f"🔄 Marquer comme rendu", key=f"emp_back_{idx}"):
-                    sheet_livres.update_cell(idx + 2, cols.index(col_s)+1, "Libre")
-                    sheet_livres.update_cell(idx + 2, cols.index(col_e)+1, "")
+                    sheet_livres.update_cell(idx + 2, 5, "Libre")
+                    sheet_livres.update_cell(idx + 2, 6, "")
                     st.rerun()
     else:
         st.write("Rien à signaler pour vos livres.")
@@ -134,7 +140,7 @@ with onglets[2]:
                 sheet_livres.delete_rows(idx + 2)
                 st.rerun()
 
-# --- 4. AJOUTER ---
+# --- 4 & 5 (AJOUT / IMPORT) ---
 with onglets[3]:
     with st.form("add_vfinal"):
         t, a = st.text_input("Titre"), st.text_input("Auteur")
@@ -144,7 +150,6 @@ with onglets[3]:
             sheet_livres.append_row([t, a, utilisateur, f"{note} {com}", "Libre", ""])
             st.success("C'est en ligne !"); st.rerun()
 
-# --- 5. IMPORT ---
 with onglets[4]:
     up = st.file_uploader("Fichier Excel", type="xlsx")
     if up and st.button("Lancer l'import"):
