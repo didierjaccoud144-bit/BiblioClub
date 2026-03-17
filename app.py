@@ -3,9 +3,10 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 import urllib.parse
+from datetime import datetime, timedelta
 
 # Importation du fichier de profil membres
-from membres_profil import get_membre_info, get_liste_membres_fixes, AVATARS_LIST
+from membres_profil import get_membre_info, get_liste_membres_fixes
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Biblio Club", page_icon="📚", layout="centered")
@@ -28,18 +29,19 @@ except Exception as e:
     st.error(f"Erreur de connexion : {e}")
     st.stop()
 
-# --- DÉTECTION SÉCURISÉE PAR POSITION ---
-# On récupère les vrais noms des colonnes tels qu'ils arrivent
-cols_reelles = df_livres.columns.tolist()
-
-# On définit les noms en fonction de leur place dans ton Excel (A, B, C, D, E, F)
-# 1:Titre, 2:Auteur, 3:Membre, 4:Avis, 5:Statut, 6:Emprunteur
-col_m = cols_reelles[2] if len(cols_reelles) > 2 else "Membre"
-col_s = cols_reelles[4] if len(cols_reelles) > 4 else "Statut"
-col_e = cols_reelles[5] if len(cols_reelles) > 5 else "Emprunteur"
+# --- CONSTANTES COLONNES (Mises à jour) ---
+COL = {
+    "Titre": "Titre", 
+    "Auteur": "Auteur", 
+    "Proprio": "Propriétaire",  # Changement ici
+    "Avis": "Avis_delire", 
+    "Statut": "Statut", 
+    "Emprunteur": "Emprunteur",
+    "Note": "Note", 
+    "Date": "Date_Ajout"
+}
 
 def envoyer_whatsapp(telephone, message):
-    if not telephone: return "#"
     return f"https://wa.me/{str(telephone).replace(' ', '')}?text={urllib.parse.quote(message)}"
 
 def show_avatar(url, size=40):
@@ -60,102 +62,110 @@ with col_u2:
     infos_user = get_membre_info(utilisateur)
 
 st.write("---")
-onglets = st.tabs(["📖 Bibliothèque", "🤝 Emprunts", "👤 Mon Profil", "➕ Ajouter", "📤 Import"])
+onglets = st.tabs(["📖 Bibliothèque", "🤝 Emprunts", "👤 Mon Profil", "➕ Ajouter"])
 
 # --- 1. BIBLIOTHÈQUE ---
 with onglets[0]:
-    for idx, row in df_livres.iloc[::-1].iterrows():
-        statut = str(row.get(col_s, 'Libre')).strip() or "Libre"
+    st.markdown("### 🔍 Trier par")
+    tri = st.selectbox("", ["Derniers ajouts", "Note (la meilleure)", "Titre (A-Z)", "Auteur", "Propriétaire"], label_visibility="collapsed")
+    
+    df_tri = df_livres.copy()
+    if tri == "Titre (A-Z)": df_tri = df_tri.sort_values(by=COL["Titre"])
+    elif tri == "Auteur": df_tri = df_tri.sort_values(by=COL["Auteur"])
+    elif tri == "Propriétaire": df_tri = df_tri.sort_values(by=COL["Proprio"])
+    elif tri == "Note (la meilleure)": df_tri = df_tri.sort_values(by=COL["Note"], ascending=False)
+    else: df_tri = df_tri.iloc[::-1]
+
+    for idx, row in df_tri.iterrows():
+        statut = str(row.get(COL["Statut"], 'Libre')).strip() or "Libre"
         color = "green" if statut == "Libre" else "orange" if statut == "Demandé" else "red"
         
+        # Badge Nouveauté
+        badge_new = ""
+        try:
+            date_livre = datetime.strptime(str(row[COL["Date"]]), "%Y-%m-%d")
+            if datetime.now() - date_livre < timedelta(days=7):
+                badge_new = "🆕 "
+        except: pass
+
         with st.container():
             c1, c2 = st.columns([1, 4])
             with c1: st.title("📕")
             with c2:
-                st.markdown(f"### {row['Titre']} :{color}[ ({statut})]")
-                st.write(f"**Auteur :** {row.get('Auteur')} | **Proprio :** {row.get(col_m)}")
-                if row.get('Avis_delire'):
-                    st.success(f"💬 {row['Avis_delire']}")
+                # Affichage Titre + Note
+                st.markdown(f"### {badge_new}{row[COL['Titre']]} {row.get(COL['Note'], '')}")
+                # Affichage Propriétaire dans le visuel
+                st.write(f"**{row[COL['Auteur']]}** | :{color}[({statut})] | **Propriétaire :** {row[COL['Proprio']]}")
                 
-                if statut == "Libre" and str(row.get(col_m)) != utilisateur:
-                    if st.button(f"Demander ce livre", key=f"bib_req_{idx}"):
-                        sheet_livres.update_cell(idx + 2, 5, "Demandé") # Colonne E
-                        sheet_livres.update_cell(idx + 2, 6, utilisateur) # Colonne F
+                if row.get(COL['Avis']):
+                    st.success(f"💬 {row[COL['Avis']]}")
+                
+                if statut == "Libre" and str(row[COL['Proprio']]) != utilisateur:
+                    if st.button(f"Demander ce livre", key=f"req_{idx}"):
+                        original_idx = df_livres[df_livres[COL['Titre']] == row[COL['Titre']]].index[0]
+                        sheet_livres.update_cell(original_idx + 2, 5, "Demandé")
+                        sheet_livres.update_cell(original_idx + 2, 6, utilisateur)
                         st.success("Demande envoyée !")
                         st.rerun()
             st.write("---")
 
-# --- 2. EMPRUNTS (CORRIGÉ SANS KEYERROR) ---
+# --- 2. EMPRUNTS ---
 with onglets[1]:
-    st.subheader("🤝 Gestion des flux")
-    
-    # A. Ce que j'ai demandé
+    st.subheader("🤝 Suivi des emprunts")
     st.markdown("#### 📥 Mes demandes faites")
-    mes_emprunts = df_livres[df_livres[col_e] == utilisateur]
+    mes_emprunts = df_livres[df_livres[COL["Emprunteur"]] == utilisateur]
     if not mes_emprunts.empty:
-        for idx, row in mes_emprunts.iterrows():
-            st.info(f"📖 **{row['Titre']}** chez **{row[col_m]}** ({row[col_s]})")
+        for _, r in mes_emprunts.iterrows():
+            st.info(f"📖 **{r[COL['Titre']]}** chez {r[COL['Proprio']]} ({r[COL['Statut']]})")
     else:
         st.write("Aucune demande en cours.")
 
     st.write("---")
-    
-    # B. Ce que les autres me demandent
-    st.markdown("#### 📤 Demandes sur mes livres")
-    mes_livres_mouv = df_livres[(df_livres[col_m] == utilisateur) & (df_livres[col_s].isin(['Demandé', 'Emprunté']))]
+    st.markdown("#### 📤 Demandes reçues")
+    mes_livres_mouv = df_livres[(df_livres[COL["Proprio"]] == utilisateur) & (df_livres[COL["Statut"]].isin(['Demandé', 'Emprunté']))]
     if not mes_livres_mouv.empty:
-        for idx, row in mes_livres_mouv.iterrows():
-            le_demandeur = row.get(col_e)
-            st.warning(f"🔔 **{le_demandeur}** -> **{row['Titre']}**")
-            
-            if row[col_s] == "Demandé":
-                if st.button(f"✅ Valider prêt pour {le_demandeur}", key=f"emp_ok_{idx}"):
-                    sheet_livres.update_cell(idx + 2, 5, "Emprunté")
-                    info_d = get_membre_info(le_demandeur)
-                    msg = f"Hello {le_demandeur} ! Ok pour '{row['Titre']}'. Retrait : {infos_user.get('Infos_Retrait')}"
+        for idx, r in mes_livres_mouv.iterrows():
+            emp = r[COL["Emprunteur"]]
+            st.warning(f"🔔 **{emp}** -> **{r[COL['Titre']]}**")
+            if r[COL["Statut"]] == "Demandé":
+                if st.button(f"✅ Valider prêt", key=f"ok_{idx}"):
+                    oidx = df_livres[df_livres[COL['Titre']] == r[COL['Titre']]].index[0]
+                    sheet_livres.update_cell(oidx + 2, 5, "Emprunté")
+                    info_d = get_membre_info(emp)
+                    msg = f"Hello {emp} ! Ok pour '{r[COL['Titre']]}'. Retrait : {infos_user.get('Infos_Retrait')}"
                     st.link_button("📱 WhatsApp", envoyer_whatsapp(info_d.get('Téléphone',''), msg))
-            elif row[col_s] == "Emprunté":
-                if st.button(f"🔄 Marquer comme rendu", key=f"emp_back_{idx}"):
-                    sheet_livres.update_cell(idx + 2, 5, "Libre")
-                    sheet_livres.update_cell(idx + 2, 6, "")
+            elif r[COL["Statut"]] == "Emprunté":
+                if st.button(f"🔄 Marquer comme rendu", key=f"ret_{idx}"):
+                    oidx = df_livres[df_livres[COL['Titre']] == r[COL['Titre']]].index[0]
+                    sheet_livres.update_cell(oidx + 2, 5, "Libre")
+                    sheet_livres.update_cell(oidx + 2, 6, "")
                     st.rerun()
     else:
         st.write("Rien à signaler pour vos livres.")
 
 # --- 3. MON PROFIL ---
 with onglets[2]:
-    st.subheader(f"👤 Profil de {utilisateur}")
-    c_p1, c_p2 = st.columns([1, 3])
-    with c_p1: show_avatar(infos_user.get('Avatar',''), size=80)
-    with c_p2:
-        st.markdown(f"**📍 Position :** {infos_user.get('Position', 'Non renseignée')}")
-        st.markdown(f"**🏠 Retrait :** {infos_user.get('Infos_Retrait', 'Non renseignées')}")
-    
+    st.subheader(f"👤 {utilisateur}")
+    st.markdown(f"📍 Position : **{infos_user.get('Position')}**")
     st.write("---")
-    st.subheader("📚 Ma collection")
-    mes_propres_livres = df_livres[df_livres[col_m] == utilisateur]
-    for idx, row in mes_propres_livres.iterrows():
-        with st.expander(f"📙 {row['Titre']}"):
-            if st.button(f"🗑️ Supprimer", key=f"prof_del_{idx}"):
-                sheet_livres.delete_rows(idx + 2)
+    mes_propres_livres = df_livres[df_livres[COL["Proprio"]] == utilisateur]
+    for idx, r in mes_propres_livres.iterrows():
+        with st.expander(f"📙 {r[COL['Titre']]} ({r[COL['Statut']]})"):
+            if st.button("Supprimer", key=f"del_{idx}"):
+                oidx = df_livres[df_livres[COL['Titre']] == r[COL['Titre']]].index[0]
+                sheet_livres.delete_rows(oidx + 2)
                 st.rerun()
 
-# --- 4 & 5 (AJOUT / IMPORT) ---
+# --- 4. AJOUTER ---
 with onglets[3]:
-    with st.form("add_vfinal"):
-        t, a = st.text_input("Titre"), st.text_input("Auteur")
+    with st.form("ajout_vfinal"):
+        t = st.text_input("Titre")
+        a = st.text_input("Auteur")
         note = st.select_slider("Note", options=["📚", "📚📚", "📚📚📚", "📚📚📚📚"])
-        com = st.text_area("Avis")
-        if st.form_submit_button("Partager"):
-            sheet_livres.append_row([t, a, utilisateur, f"{note} {com}", "Libre", ""])
-            st.success("C'est en ligne !"); st.rerun()
-
-with onglets[4]:
-    up = st.file_uploader("Fichier Excel", type="xlsx")
-    if up and st.button("Lancer l'import"):
-        df_im = pd.read_excel(up)
-        for _, r in df_im.iterrows():
-            sheet_livres.append_row([r['Titre'], r.get('Auteur',''), utilisateur, r.get('Avis_delire',''), "Libre", ""])
-        st.success("Import réussi !"); st.rerun()
+        com = st.text_area("Avis-Délire")
+        if st.form_submit_button("Ajouter"):
+            d = datetime.now().strftime("%Y-%m-%d")
+            sheet_livres.append_row([t, a, utilisateur, com, "Libre", "", note, d])
+            st.success("Ajouté !"); st.rerun()
 
 st.caption("Une création DJA’WEB avec l’aide de Gemini IA")
