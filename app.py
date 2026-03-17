@@ -26,7 +26,6 @@ try:
     sheet_livres = spreadsheet.worksheet("Livres")
     sheet_membres = spreadsheet.worksheet("Membres")
     data = sheet_livres.get_all_records()
-    # Sécurité si la bibliothèque est vide
     df_livres = pd.DataFrame(data) if data else pd.DataFrame(columns=["Titre", "Auteur", "Propriétaire", "Avis_delire", "Statut", "Emprunteur", "Note", "Date_Ajout"])
 except Exception as e:
     st.error(f"Erreur de connexion : {e}")
@@ -38,7 +37,6 @@ COL = {
     "Note": "Note", "Date": "Date_Ajout"
 }
 
-# --- FONCTION WHATSAPP UNIVERSELLE ---
 def envoyer_whatsapp(message):
     return f"https://api.whatsapp.com/send?text={urllib.parse.quote(message)}"
 
@@ -61,27 +59,48 @@ nom_onglet_emprunt = "🤝 Emprunts (🔔)" if has_notif else "🤝 Emprunts"
 
 st.write("---")
 onglets_noms = ["❓ Mode d'emploi", "📖 Bibliothèque", nom_onglet_emprunt, "👤 Mon Profil", "➕ Ajouter"]
-
-# RENOMMAGE : Gérance devient "Ajouter un membre" pour les admins
 if utilisateur in ["Didier", "Amélie"]:
     onglets_noms.append("👤 Ajouter un membre")
-
 onglets = st.tabs(onglets_noms)
 
-# --- 0. MODE D'EMPLOI ---
+# --- 0. MODE D'EMPLOI DÉTAILLÉ ---
 with onglets[0]:
-    st.subheader("🚀 Bienvenue au Club !")
-    st.markdown("""
-    ### 📱 1. L'installer sur votre téléphone
-    * **Sur iPhone** : Icône **Partage** -> **« Sur l'écran d'accueil »**.
-    * **Sur Android** : Les **3 petits points** -> **« Installer l'application »**.
+    st.subheader("📖 Guide de survie du lecteur")
     
-    ### 🎨 2. Les couleurs
-    * 📗 **Livre Vert** : Disponible !
-    * 📙 **Livre Orange** : Demande en cours.
-    * 📕 **Livre Rouge** : Déjà en prêt.
-    """)
-    st.success("Bonnes lectures ! 📖")
+    with st.expander("📱 1. Installer l'app sur mon téléphone", expanded=True):
+        st.markdown("""
+        * **Sur iPhone** : Ouvre le lien dans Safari -> Clique sur l'icône **Partage** (carré avec flèche) -> Sélectionne **« Sur l'écran d'accueil »**.
+        * **Sur Android** : Ouvre le lien dans Chrome -> Clique sur les **3 petits points** -> Sélectionne **« Installer l'application »**.
+        """)
+
+    with st.expander("🔍 2. Emprunter un livre"):
+        st.markdown("""
+        1. Repère un livre avec le symbole **📗 (Libre)**.
+        2. Clique sur le bouton **"Demander"**.
+        3. Le livre devient **📙 (Orange)**. Le propriétaire reçoit une notification et doit valider.
+        4. Une fois validé, tu peux t'arranger avec lui via WhatsApp pour le récupérer !
+        """)
+
+    with st.expander("🤝 3. Gérer mes prêts (Je suis propriétaire)"):
+        st.markdown("""
+        * Si une pastille **(🔔)** apparaît sur l'onglet **Emprunts**, quelqu'un veut un de tes livres !
+        * Tu peux **✅ Valider** (un message WhatsApp cool est prêt pour l'emprunteur) ou **❌ Décliner** si tu ne peux pas le prêter.
+        * Quand on te rend le livre, clique sur **🔄 Rendu** pour le remettre en circulation.
+        """)
+
+    with st.expander("➕ 4. Ajouter mes livres"):
+        st.markdown("""
+        Va dans l'onglet **"Ajouter"** :
+        * **À l'unité** : Remplis le formulaire manuel (n'oublie pas ta note 📚 !).
+        * **En masse** : Télécharge le modèle Excel, remplis-le et recharge-le. C'est magique !
+        """)
+
+    with st.expander("📢 5. Suggérer un nouveau membre"):
+        st.markdown("""
+        Dans ton onglet **"Profil"**, tu trouveras un formulaire pour suggérer un ami. 
+        Cela préparera un message WhatsApp qu'il te suffira d'envoyer à **Didier** ou **Amélie** pour qu'ils créent son accès.
+        """)
+    st.success("C'est tout ! Prêt à explorer la bibliothèque ?")
 
 # --- 1. BIBLIOTHÈQUE ---
 with onglets[1]:
@@ -172,10 +191,10 @@ with onglets[4]:
             for _, r in df_im.iterrows():
                 sheet_livres.append_row([r['Titre'], r.get('Auteur',''), utilisateur, r.get('Avis',''), "Libre", "", r.get('Note',''), datetime.now().strftime("%Y-%m-%d")]); st.rerun()
 
-# --- 5. AJOUTER UN MEMBRE (Anciennement Gérance) ---
+# --- 5. AJOUTER UN MEMBRE ---
 if utilisateur in ["Didier", "Amélie"]:
     with onglets[-1]:
-        st.subheader("👤 Ajouter un nouveau membre")
+        st.subheader("👤 Ajouter un membre")
         with st.form("nm"):
             n, t, p, r = st.text_input("Prénom"), st.text_input("Tél"), st.text_input("Lieu"), st.text_input("Retrait")
             if st.form_submit_button("Enregistrer"):
