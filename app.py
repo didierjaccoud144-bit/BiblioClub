@@ -80,7 +80,7 @@ onglets_noms.append("❓ Mode d'emploi")
 
 onglets = st.tabs(onglets_noms)
 
-# --- 1. BIBLIOTHÈQUE (VERSION COMPACTE) ---
+# --- 1. BIBLIOTHÈQUE ---
 with onglets[0]:
     recherche = st.text_input("🔍 Rechercher...", "").lower()
     tri = st.selectbox("Trier par", ["Derniers ajouts", "Note", "Titre (A-Z)"])
@@ -97,11 +97,9 @@ with onglets[0]:
         emoji, color = ("📗", "green") if statut == "Libre" else (("⏳", "orange") if statut == "Demandé" else ("📕", "red"))
         
         with st.container():
-            # Affichage Compact sur une ligne de titre
             st.markdown(f"#### {emoji} {row[COL['Titre']]} {row.get(COL['Note'], '')}")
             st.markdown(f"*{row[COL['Auteur']]}* — Proprio : **{p_livre}** | :{color}[**({statut})**]")
             
-            # Avis et Actions en colonnes pour gagner de la place
             c_actions, c_avis = st.columns([1.5, 3])
             
             with c_actions:
@@ -110,10 +108,11 @@ with onglets[0]:
                         oidx = int(df_livres.index[df_livres[COL['Titre']] == row[COL['Titre']]][0] + 2)
                         sheet_livres.update_cell(oidx, 5, "Demandé"); sheet_livres.update_cell(oidx, 6, utilisateur); refresh()
                 
-                if st.checkbox("📝 Avis/Note", key=f"chk_{idx}"):
+                # REMPLACEMENT DE LA CASE PAR UN EXPANDER "BULLE DE TEXTE"
+                with st.expander("💬 Avis/Note"):
                     n_l = st.select_slider("Ma Note", options=["📚","📚📚","📚📚📚","📚📚📚📚"], key=f"n_{idx}")
-                    c_l = st.text_area("Retour", key=f"c_{idx}", height=70)
-                    if st.button("Publier", key=f"p_{idx}"):
+                    c_l = st.text_area("Mon retour", key=f"c_{idx}", height=70)
+                    if st.button("Publier l'avis", key=f"p_{idx}"):
                         oidx = int(df_livres.index[df_livres[COL['Titre']] == row[COL['Titre']]][0] + 2)
                         total = (str(row.get(COL["Avis_Lecteurs"], "")) + f"\n\n**{utilisateur}** ({n_l}) : {c_l}").strip()
                         sheet_livres.update_cell(oidx, 9, total); refresh()
@@ -122,7 +121,7 @@ with onglets[0]:
                 if row.get(COL['Avis']):
                     st.caption(f"⭐ **Proprio :** {row[COL['Avis']]}")
                 if row.get(COL['Avis_Lecteurs']):
-                    with st.expander("💬 Avis lecteurs"): st.markdown(row[COL['Avis_Lecteurs']])
+                    with st.expander("💬 Voir les avis"): st.markdown(row[COL['Avis_Lecteurs']])
             
             st.markdown("<hr style='margin:10px 0px'>", unsafe_allow_html=True)
 
@@ -215,7 +214,7 @@ with onglets[idx_guide]:
     with st.expander("📱 1. Installation (Très recommandé)", expanded=True):
         st.markdown("""
         Pour utiliser l'application comme une vraie appli téléphone :
-        * **iPhone (Safari)** : Cliquez sur l'icône **Partage** (carré avec flèche vers le haut) -> Faites défiler et cliquez sur **« Sur l'écran d'accueil »**.
+        * **iPhone (Safari)** : Cliquez sur l'icône **Partage** (carré avec flèche vers le haut) -> Fais défiler et clique sur **« Sur l'écran d'accueil »**.
         * **Android (Chrome)** : Cliquez sur les **3 petits points** en haut à droite -> Cliquez sur **« Installer l'application »**.
         """)
 
@@ -233,17 +232,19 @@ with onglets[idx_guide]:
         * **Import Excel** : Si vous avez beaucoup de livres, téléchargez notre modèle, remplissez-le et envoyez-le. Tout apparaîtra d'un coup !
         """)
 
-    with st.expander("🤝 4. Emprunter / Prêter (Cycle WhatsApp)"):
+    with st.expander("💬 4. Partager mon avis"):
+        st.markdown("""
+        * Pour chaque livre, vous pouvez cliquer sur le bouton **💬 Avis/Note**. 
+        * Vous pouvez alors donner votre note et laisser un petit commentaire pour guider les autres membres.
+        * L'avis du propriétaire reste affiché en permanence, tandis que les avis des lecteurs sont regroupés dans le menu **💬 Voir les avis**.
+        """)
+
+    with st.expander("🤝 5. Emprunter / Prêter (Cycle WhatsApp)"):
         st.markdown("""
         1. **Demande** : L'emprunteur clique sur "Demander".
         2. **Validation** : Le proprio voit une alerte orange. Il clique sur **✅ Valider**.
         3. **Contact** : Une fois validé, un bouton **WhatsApp** apparaît. Cliquez dessus pour fixer le RDV !
         4. **Rendu** : Quand le livre revient, le proprio clique sur **🔄 Rendu** pour le remettre en circulation.
-        """)
-
-    with st.expander("📢 5. Suggérer un membre"):
-        st.markdown("""
-        Dans votre **Profil**, utilisez le formulaire "Suggérer". Cela prépare un message WhatsApp pour Didier ou Amélie afin qu'ils créent le compte.
         """)
 
 st.caption("Une création DJA’WEB avec l’aide de Gemini IA")
