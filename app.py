@@ -62,10 +62,7 @@ if not df_livres.empty:
 nom_onglet_emprunt = "🤝 Emprunts (🔔)" if has_notif else "🤝 Emprunts"
 
 st.write("---")
-onglets_noms = ["📖 Bibliothèque", nom_onglet_emprunt, "👤 Mon Profil", "➕ Ajouter"]
-if utilisateur in ["Didier", "Amélie"]:
-    onglets_noms.append("⚙️ Gérance")
-onglets = st.tabs(onglets_noms)
+onglets = st.tabs(["📖 Bibliothèque", nom_onglet_emprunt, "👤 Mon Profil", "➕ Ajouter", "⚙️ Gérance" if utilisateur in ["Didier", "Amélie"] else ""])
 
 # --- 1. BIBLIOTHÈQUE ---
 with onglets[0]:
@@ -99,7 +96,7 @@ with onglets[0]:
                             st.rerun()
                 st.write("---")
 
-# --- 2. EMPRUNTS ---
+# --- 2. EMPRUNTS (AVEC OPTION DÉCLINER) ---
 with onglets[1]:
     st.subheader("🤝 Suivi des emprunts")
     mask_reçu = (df_livres[COL["Proprio"]] == utilisateur) & (df_livres[COL["Statut"]].isin(['Demandé', 'Emprunté']))
@@ -108,35 +105,42 @@ with onglets[1]:
         for idx, r in res.iterrows():
             emp = r[COL["Emprunteur"]]
             st.warning(f"🔔 **{emp}** attend une réponse pour : **{r[COL['Titre']]}**")
+            
             if r[COL["Statut"]] == "Demandé":
-                if st.button(f"✅ Valider le prêt", key=f"v_{idx}"):
-                    oidx = df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2
-                    sheet_livres.update_cell(oidx, 5, "Emprunté")
-                    st.link_button("📱 Prévenir par WhatsApp", envoyer_whatsapp(get_membre_info(emp).get('Téléphone',''), f"Hello {emp} ! Ok pour '{r[COL['Titre']]}'. Retrait : {infos_user.get('Infos_Retrait')}"))
+                col_btn1, col_btn2 = st.columns(2)
+                with col_btn1:
+                    if st.button(f"✅ Valider le prêt", key=f"v_{idx}"):
+                        oidx = df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2
+                        sheet_livres.update_cell(oidx, 5, "Emprunté")
+                        st.link_button("📱 Prévenir (WhatsApp OK)", envoyer_whatsapp(get_membre_info(emp).get('Téléphone',''), f"Hello {emp} ! Super nouvelle, c'est tout bon pour '{r[COL['Titre']]}'. Retrait : {infos_user.get('Infos_Retrait')}"))
+                with col_btn2:
+                    if st.button(f"❌ Décliner", key=f"d_{idx}"):
+                        oidx = df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2
+                        sheet_livres.update_cell(oidx, 5, "Libre")
+                        sheet_livres.update_cell(oidx, 6, "")
+                        msg_refus = f"Coucou {emp} ! Désolé, je ne peux pas prêter '{r[COL['Titre']]}' pour le moment (je l'ai prêté ailleurs ou j'en ai encore besoin). On se redit dès qu'il est dispo ! 😉"
+                        st.link_button("📱 Prévenir (WhatsApp Refus)", envoyer_whatsapp(get_membre_info(emp).get('Téléphone',''), msg_refus))
+            
             elif r[COL["Statut"]] == "Emprunté":
                 if st.button(f"🔄 Livre rendu", key=f"ret_{idx}"):
                     oidx = df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2
                     sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, ""); st.rerun()
     else: st.write("Aucune action requise sur vos livres.")
 
-# --- 3. MON PROFIL & SUGGESTION ---
+# --- 3. PROFIL & SUGGESTION ---
 with onglets[2]:
     st.subheader(f"👤 Profil de {utilisateur}")
     st.markdown(f"📍 Domicile : **{infos_user.get('Position', 'Non renseigné')}**")
     st.write("---")
-    
-    # FORMULAIRE DE SUGGESTION (Visible par tous)
     st.markdown("#### 📢 Suggérer un nouveau membre")
-    st.info("💡 Le message WhatsApp généré devra être envoyé manuellement à Didier ou Amélie.")
+    st.info("💡 Le message WhatsApp devra être envoyé à Didier ou Amélie.")
     with st.form("sugg_form"):
         s_nom = st.text_input("Prénom & Nom du futur membre")
         s_tel = st.text_input("Numéro de téléphone")
         if st.form_submit_button("Préparer le message WhatsApp"):
             msg_sugg = f"Hello, je voudrais te suggérer de partager l'application 'La boîte à livres à Méli-Mélo' avec un nouveau membre.\n\nNom : {s_nom}\nTél : {s_tel}\n\nMerci !"
-            st.link_button("📱 Ouvrir WhatsApp pour envoyer", envoyer_whatsapp("", msg_sugg))
-    
+            st.link_button("📱 Ouvrir WhatsApp", envoyer_whatsapp("", msg_sugg))
     st.write("---")
-    st.subheader("📚 Ma collection")
     mes_l = df_livres[df_livres[COL["Proprio"]] == utilisateur]
     for idx, r in mes_l.iterrows():
         with st.expander(f"📙 {r[COL['Titre']]} ({r[COL['Statut']]})"):
@@ -155,7 +159,7 @@ with onglets[3]:
                 sheet_livres.append_row([t, a, utilisateur, "", "Libre", "", n, datetime.now().strftime("%Y-%m-%d")])
                 st.success("Livre ajouté !"); st.rerun()
     else:
-        st.markdown("### 📝 Mode d'emploi Import\n1. Télécharge le modèle.\n2. Remplis les colonnes.\n3. Charge le fichier.")
+        st.markdown("### 📝 Mode d'emploi Import")
         st.link_button("📥 Télécharger BiblioMod.xlsx", "https://raw.githubusercontent.com/didierjaccoud144-bit/BiblioClub/main/BiblioMod.xlsx")
         up = st.file_uploader("Importer ton fichier Excel", type="xlsx")
         if up and st.button("Lancer l'importation"):
@@ -164,13 +168,13 @@ with onglets[3]:
                 sheet_livres.append_row([r['Titre'], r.get('Auteur',''), utilisateur, r.get('Avis',''), "Libre", "", r.get('Note',''), datetime.now().strftime("%Y-%m-%d")])
             st.rerun()
 
-# --- 5. GÉRANCE (Uniquement création directe) ---
+# --- 5. GÉRANCE ---
 if utilisateur in ["Didier", "Amélie"]:
     with onglets[-1]:
         st.subheader("⚙️ Gérance administrative")
         with st.form("new_m"):
             n, t, p, r = st.text_input("Prénom"), st.text_input("Tél"), st.text_input("Lieu"), st.text_input("Retrait")
-            if st.form_submit_button("Créer le compte immédiatement"):
-                sheet_membres.append_row([n, t, "", p, r]); st.success("Membre ajouté au registre !")
+            if st.form_submit_button("Créer le compte"):
+                sheet_membres.append_row([n, t, "", p, r]); st.success("Membre ajouté !")
 
 st.caption("Une création DJA’WEB avec l’aide de Gemini IA")
