@@ -11,6 +11,12 @@ from membres_profil import get_membre_info, get_liste_membres_fixes
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Méli-Mélo", page_icon="📚", layout="centered")
 
+# Initialisation de la session de connexion
+if 'connecte' not in st.session_state:
+    st.session_state.connecte = False
+if 'user' not in st.session_state:
+    st.session_state.user = None
+
 def refresh():
     st.cache_data.clear()
     st.rerun()
@@ -23,16 +29,21 @@ def get_gspread_client():
     creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     return gspread.authorize(creds)
 
-# --- CHARGEMENT ---
-st.cache_data.clear()
+# --- CHARGEMENT DES DONNÉES ---
 try:
     client = get_gspread_client()
     spreadsheet = client.open("BiblioClub_Data") 
     sheet_livres = spreadsheet.worksheet("Livres")
     sheet_membres = spreadsheet.worksheet("Membres")
-    data = sheet_livres.get_all_records()
+    
+    # Données Livres
+    data_l = sheet_livres.get_all_records()
     cols_def = ["Titre", "Auteur", "Propriétaire", "Avis_delire", "Statut", "Emprunteur", "Note", "Date_Ajout", "Avis_Lecteurs"]
-    df_livres = pd.DataFrame(data) if data else pd.DataFrame(columns=cols_def)
+    df_livres = pd.DataFrame(data_l) if data_l else pd.DataFrame(columns=cols_def)
+    
+    # Données Membres (pour vérification du code)
+    data_m = sheet_membres.get_all_records()
+    df_membres = pd.DataFrame(data_m)
 except Exception as e:
     st.error(f"Erreur de connexion : {e}")
     st.stop()
@@ -46,19 +57,48 @@ COL = {
 def envoyer_whatsapp(message):
     return f"https://api.whatsapp.com/send?text={urllib.parse.quote(message)}"
 
-# --- INTERFACE ---
+# --- LOGIQUE DE CONNEXION ---
+if not st.session_state.connecte:
+    st.title("🔐 Accès Méli-Mélo")
+    st.write("Veuillez vous identifier pour accéder à la bibliothèque.")
+    
+    liste_noms = get_liste_membres_fixes()
+    nom_choisi = st.selectbox("Qui êtes-vous ?", liste_noms)
+    code_saisi = st.text_input("Code Secret", type="password", help="Minimum 4 caractères")
+    
+    if st.button("Se connecter"):
+        # Vérification du code dans le DataFrame membres
+        # On cherche la ligne correspondant au prénom et on vérifie la colonne 'Code-Secret'
+        try:
+            ligne_membre = df_membres[df_membres['Prénom'] == nom_choisi]
+            code_reel = str(ligne_membre['Code-Secret'].values[0]).strip()
+            
+            if str(code_saisi).strip() == code_reel and len(str(code_saisi)) >= 4:
+                st.session_state.connecte = True
+                st.session_state.user = nom_choisi
+                st.rerun()
+            else:
+                st.error("Code incorrect ou trop court (min. 4 caractères).")
+        except Exception:
+            st.error("Erreur d'identification. Contactez Didier.")
+    st.stop() # Arrête l'exécution ici tant qu'on n'est pas connecté
+
+# --- SI CONNECTÉ : L'APPLICATION S'AFFICHE ---
+utilisateur = st.session_state.user
+
 st.title(" La boîte à livres à Méli-Mélo ")
 
-col_user, col_refresh = st.columns([3, 1])
-with col_user:
-    liste_membres = get_liste_membres_fixes()
-    utilisateur = st.selectbox("Utilisateur", liste_membres, key='user', label_visibility="collapsed")
+col_info, col_refresh, col_logout = st.columns([2, 1, 1])
+with col_info:
+    st.write(f"👤 Membre : **{utilisateur}**")
 with col_refresh:
     if st.button("🔄 Actualiser"):
         refresh()
-
-st.success(f"😊 Bienvenue **{utilisateur}** !")
-infos_user = get_membre_info(utilisateur)
+with col_logout:
+    if st.button("🚪 Quitter"):
+        st.session_state.connecte = False
+        st.session_state.user = None
+        st.rerun()
 
 # NOTIFICATIONS FLASH
 has_notif = False
@@ -101,27 +141,22 @@ with onglets[0]:
             st.markdown(f"*{row[COL['Auteur']]}* — Proprio : **{p_livre}** | :{color}[**({statut})**]")
             
             c_actions, c_avis = st.columns([1.5, 3])
-            
             with c_actions:
-                if statut == "Libre" and p_livre != utilisateur.strip():
+                if statut == "Libre" and p_livre != utilisateur:
                     if st.button(f"Demander", key=f"req_{idx}"):
                         oidx = int(df_livres.index[df_livres[COL['Titre']] == row[COL['Titre']]][0] + 2)
                         sheet_livres.update_cell(oidx, 5, "Demandé"); sheet_livres.update_cell(oidx, 6, utilisateur); refresh()
-                
                 with st.expander("💬 Avis/Note"):
                     n_l = st.select_slider("Ma Note", options=["📚","📚📚","📚📚📚","📚📚📚📚"], key=f"n_{idx}")
-                    c_l = st.text_area("Mon retour", key=f"c_{idx}", height=70)
-                    if st.button("Publier l'avis", key=f"p_{idx}"):
+                    c_l = st.text_area("Retour", key=f"c_{idx}", height=70)
+                    if st.button("Publier", key=f"p_{idx}"):
                         oidx = int(df_livres.index[df_livres[COL['Titre']] == row[COL['Titre']]][0] + 2)
                         total = (str(row.get(COL["Avis_Lecteurs"], "")) + f"\n\n**{utilisateur}** ({n_l}) : {c_l}").strip()
                         sheet_livres.update_cell(oidx, 9, total); refresh()
-
             with c_avis:
-                if row.get(COL['Avis']):
-                    st.caption(f"⭐ **Proprio :** {row[COL['Avis']]}")
+                if row.get(COL['Avis']): st.caption(f"⭐ **Proprio :** {row[COL['Avis']]}")
                 if row.get(COL['Avis_Lecteurs']):
                     with st.expander("💬 Voir les avis"): st.markdown(row[COL['Avis_Lecteurs']])
-            
             st.markdown("<hr style='margin:10px 0px'>", unsafe_allow_html=True)
 
 # --- 2. EMPRUNTS ---
@@ -140,7 +175,7 @@ with onglets[1]:
                         sheet_livres.update_cell(oidx, 5, "Emprunté")
                         st.link_button("📱 WhatsApp", envoyer_whatsapp(f"C'est OK pour '{r[COL['Titre']]}'. On s'organise ?"))
                 with col2:
-                    if st.button(f"❌ Refuser", key=f"d_{idx}"):
+                    if st.button(f"❌ Décliner", key=f"d_{idx}"):
                         oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
                         sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, ""); refresh()
             elif r[COL["Statut"]] == "Emprunté":
@@ -152,26 +187,23 @@ with onglets[1]:
 # --- 3. PROFIL ---
 with onglets[2]:
     st.subheader(f"👤 Profil de {utilisateur}")
-    
-    st.markdown("### 📤 Mes livres en voyage (Prêts)")
+    st.markdown("### 📤 Prêts (Livres sortis)")
     mes_prets = df_livres[(df_livres[COL["Proprio"]] == utilisateur) & (df_livres[COL["Statut"]].isin(['Demandé', 'Emprunté']))]
     if not mes_prets.empty:
         st.table(mes_prets[[COL["Titre"], COL["Emprunteur"], COL["Statut"]]])
-    else: st.info("Aucun de vos livres n'est prêté actuellement. 🏠")
-
-    st.markdown("### 📥 Les livres que j'ai en emprunt")
+    
+    st.markdown("### 📥 Emprunts (Livres chez moi)")
     mes_emprunts = df_livres[(df_livres[COL["Emprunteur"]] == utilisateur) & (df_livres[COL["Statut"]].isin(['Demandé', 'Emprunté']))]
     if not mes_emprunts.empty:
         recap_e = mes_emprunts[[COL["Titre"], COL["Proprio"], COL["Statut"]]].copy()
         recap_e[COL["Statut"]] = recap_e[COL["Statut"]].replace({"Demandé": "⏳ En attente", "Emprunté": "🏠 Chez moi"})
         st.table(recap_e)
-    else: st.info("Vous n'avez aucun livre en emprunt. 📖")
     
     st.write("---")
     st.markdown("#### 📢 Suggérer un membre")
     with st.form("sugg"):
         s = st.text_input("Nom, Prénom")
-        if st.form_submit_button("Préparer WhatsApp"):
+        if st.form_submit_button("WhatsApp"):
             st.link_button("📱 WhatsApp Admin", envoyer_whatsapp(f"Sugg : {s}"))
     
     st.write("---")
@@ -201,62 +233,25 @@ with onglets[3]:
                 sheet_livres.append_rows(lignes); refresh()
             except Exception as e: st.error(f"Erreur : {e}")
 
-# --- 5. GÉRANCE & MODE D'EMPLOI DÉTAILLÉ ---
-idx_guide = 4
+# --- 5. GÉRANCE ---
 if utilisateur in ["Didier", "Amélie"]:
-    idx_guide = 5
     with onglets[4]:
         st.subheader("👤 Ajouter un membre")
         with st.form("nm"):
-            n, t, p, r = st.text_input("Prénom"), st.text_input("Tél"), st.text_input("Lieu"), st.text_input("Retrait")
+            n, t, s, p, r = st.text_input("Prénom"), st.text_input("Tél"), st.text_input("Code Secret"), st.text_input("Lieu"), st.text_input("Retrait")
             if st.form_submit_button("Enregistrer"):
-                sheet_membres.append_row([n, t, "", p, r]); st.success("Fait !"); refresh()
+                sheet_membres.append_row([n, s, t, "", p, r]); st.success("Membre ajouté !"); refresh()
 
-with onglets[idx_guide]:
+# --- 6. MODE D'EMPLOI ---
+with onglets[-1]:
     st.title("📖 Mode d'emploi Méli-Mélo")
-    
-    with st.expander("📱 1. Installation (Très recommandé)", expanded=True):
-        st.markdown("""
-        Pour utiliser l'application comme une vraie appli téléphone :
-        * **Sur iPhone (Safari)** : Cliquez sur l'icône **Partage** (carré avec flèche vers le haut) -> Faites défiler et cliquez sur **« Sur l'écran d'accueil »**.
-        * **Sur Android (Chrome)** : Cliquez sur les **3 petits points** en haut à droite -> Cliquez sur **« Installer l'application »**.
-        """)
-
-    with st.expander("🔍 2. Légende et Recherche"):
-        st.markdown("""
-        * **Recherche** : Tapez un mot-clé pour filtrer instantanément la liste.
-        * 📗 **Vert** : Disponible ! Cliquez sur "Demander" pour lancer l'emprunt.
-        * ⏳ **Sablier** : Demande envoyée. On attend que le propriétaire valide.
-        * 📕 **Rouge** : Le livre est actuellement chez quelqu'un.
-        """)
-
-    with st.expander("➕ 3. Ajouter vos livres"):
-        st.markdown("""
-        * **Manuel** : Idéal pour un livre de temps en temps.
-        * **Import Excel** : Si vous avez beaucoup de livres, téléchargez notre modèle, remplissez-le et envoyez-le. Tout apparaîtra d'un coup !
-        """)
-
-    with st.expander("💬 4. Partager mon avis"):
-        st.markdown("""
-        * Pour chaque livre, vous pouvez cliquer sur le bouton **💬 Avis/Note**. 
-        * Vous pouvez alors donner votre note et laisser un petit commentaire pour guider les autres membres.
-        * L'avis du propriétaire reste affiché en permanence, tandis que les avis des lecteurs sont regroupés dans le menu **💬 Voir les avis**.
-        """)
-
-    with st.expander("🤝 5. Emprunter / Prêter (Cycle WhatsApp)"):
-        st.markdown("""
-        1. **Demande** : L'emprunteur clique sur "Demander".
-        2. **Validation** : Le proprio voit une alerte orange. Il clique sur **✅ Valider**.
-        3. **Contact** : Une fois validé, un bouton **WhatsApp** apparaît. Cliquez dessus pour fixer le RDV !
-        4. **Rendu** : Quand le livre revient, le proprio clique sur **🔄 Rendu** pour le remettre en circulation.
-        """)
-
-    with st.expander("👤 6. Mon Tableau de Bord (Profil)"):
-        st.markdown("""
-        L'onglet **Mon Profil** vous permet de tout suivre en un coup d'œil :
-        * **Mes livres en voyage** : La liste des livres que vous avez prêtés, avec le nom de l'emprunteur et le statut (Demande reçue ⏳ ou Chez lui 📕).
-        * **Les livres que j'ai en emprunt** : La liste des livres que vous avez ramassés chez les autres (ou vos demandes en cours), avec le nom du propriétaire.
-        * **Ma collection** : La liste complète de vos livres enregistrés. Vous pouvez en supprimer un ici si vous ne voulez plus le partager.
-        """)
+    with st.expander("📱 Installation", expanded=True):
+        st.markdown("* **iPhone** : Safari -> Partage -> « Sur l'écran d'accueil ».\n* **Android** : Chrome -> 3 points -> « Installer ».")
+    with st.expander("🔍 Légende et Recherche"):
+        st.markdown("* 📗 **Vert** : Disponible.\n* ⏳ **Sablier** : Demande envoyée.\n* 📕 **Rouge** : Prêté.")
+    with st.expander("💬 Partager mon avis"):
+        st.markdown("Cliquez sur **💬 Avis/Note** sous un livre pour laisser votre retour.")
+    with st.expander("🤝 Emprunter / Prêter"):
+        st.markdown("Tout se passe par **WhatsApp** une fois que le propriétaire a validé la demande.")
 
 st.caption("Une création DJA’WEB avec l’aide de Gemini IA")
