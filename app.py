@@ -51,12 +51,14 @@ COL = {
 def envoyer_whatsapp(message):
     return f"https://api.whatsapp.com/send?text={urllib.parse.quote(message)}"
 
-# --- CONNEXION ---
+# --- 0. CONNEXION ---
 if not st.session_state.connecte:
     st.title("🔐 Accès Méli-Mélo")
+    st.write("Bienvenue ! Veuillez vous identifier pour entrer.")
     noms_disponibles = sorted(df_membres['Prénom'].unique().tolist())
     nom_choisi = st.selectbox("Qui êtes-vous ?", noms_disponibles)
     code_saisi = st.text_input("Code Secret", type="password")
+    
     if st.button("Se connecter"):
         membre_info = df_membres[df_membres['Prénom'] == nom_choisi]
         if not membre_info.empty:
@@ -65,9 +67,10 @@ if not st.session_state.connecte:
                 st.session_state.user = nom_choisi
                 st.rerun()
             else: st.error("Code incorrect.")
+        else: st.error("Membre introuvable.")
     st.stop()
 
-# --- INTERFACE ---
+# --- INTERFACE PRINCIPALE ---
 utilisateur = st.session_state.user
 st.title(" La boîte à livres à Méli-Mélo ")
 
@@ -81,7 +84,7 @@ with c_logout:
 
 mes_demandes_urgentes = df_livres[(df_livres[COL["Proprio"]] == utilisateur) & (df_livres[COL["Statut"]] == "Demandé")]
 nb_d = len(mes_demandes_urgentes)
-if nb_d > 0: st.warning(f"🔔 **Alerte** : Tu as {nb_d} nouvelle(s) demande(s) !")
+if nb_d > 0: st.warning(f"🔔 **Alerte** : Tu as {nb_d} nouvelle(s) demande(s) de prêt !")
 
 st.write("---")
 onglets_noms = ["📖 Bibliothèque", f"🤝 Demandes ({nb_d})", "👤 Mon Profil", "➕ Ajouter"]
@@ -142,19 +145,19 @@ with onglets[1]:
                 if st.button(f"✅ Valider le prêt", key=f"v_{idx}"):
                     oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
                     sheet_livres.update_cell(oidx, 5, "Emprunté")
-                    st.success("Validé !")
+                    st.success("Validé ! Envoyez le message :")
                     st.link_button("📱 WhatsApp", envoyer_whatsapp(f"C'est OK pour '{r[COL['Titre']]}'. On s'organise ?"))
             with col2:
                 if st.button(f"❌ Décliner", key=f"d_{idx}"):
                     oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
                     sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, ""); refresh()
-    else: st.write("Aucune nouvelle demande.")
+    else: st.write("Aucune nouvelle demande en attente.")
 
-# --- 3. PROFIL (AVEC BOUTONS DE NAVIGATION) ---
+# --- 3. PROFIL (AVEC RACCOURCIS) ---
 with onglets[2]:
     st.subheader(f"👤 Profil de {utilisateur}")
     
-    # Boutons de navigation rapide (Ancres HTML)
+    # Boutons de navigation rapide
     st.markdown("""
         <div style="display: flex; gap: 10px; margin-bottom: 20px;">
             <a href="#prets" style="text-decoration: none; background-color: #f0f2f6; color: #31333F; padding: 5px 15px; border-radius: 5px; border: 1px solid #dcdcdc; font-size: 14px;">📤 Mes Prêts</a>
@@ -163,7 +166,6 @@ with onglets[2]:
         </div>
     """, unsafe_allow_html=True)
 
-    # SECTION PRÊTS
     st.markdown('<div id="prets"></div>', unsafe_allow_html=True)
     st.markdown("### 📤 Mes livres en voyage (Prêts)")
     mes_sorties = df_livres[(df_livres[COL["Proprio"]] == utilisateur) & (df_livres[COL["Statut"]] != "Libre")]
@@ -179,7 +181,6 @@ with onglets[2]:
                     sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, ""); refresh()
     else: st.info("Aucun livre prêté actuellement.")
 
-    # SECTION EMPRUNTS
     st.write("---")
     st.markdown('<div id="emprunts"></div>', unsafe_allow_html=True)
     st.markdown("### 📥 Livres que j'ai empruntés")
@@ -190,7 +191,6 @@ with onglets[2]:
         st.table(recap_e)
     else: st.info("Vous n'avez aucun livre en emprunt.")
     
-    # SECTION COLLECTION
     st.write("---")
     st.markdown('<div id="collection"></div>', unsafe_allow_html=True)
     st.markdown("### 📚 Ma collection complète")
@@ -209,12 +209,20 @@ with onglets[3]:
             if st.form_submit_button("Ajouter"):
                 sheet_livres.append_row([t, a, utilisateur, c, "Libre", "", n, datetime.now().strftime("%Y-%m-%d"), ""]); refresh()
     else:
+        st.markdown("""
+        **Procédure d'importation Excel :**
+        1. **Téléchargez** le modèle ci-dessous.
+        2. **Remplissez** les colonnes (Titre, Auteur, Avis, Note).
+        3. **Enregistrez** et envoyez le fichier via le bouton **Browse files**.
+        """)
         st.link_button("📥 Modèle Excel", "https://raw.githubusercontent.com/didierjaccoud144-bit/BiblioClub/main/BiblioMod.xlsx")
         up = st.file_uploader("Fichier Excel", type="xlsx")
         if up and st.button("Lancer l'import"):
-            df_i = pd.read_excel(up).fillna("")
-            lignes = [[str(ri['Titre']), str(ri.get('Auteur','')), utilisateur, str(ri.get('Avis','')), "Libre", "", str(ri.get('Note','📚📚')), datetime.now().strftime("%Y-%m-%d"), ""] for _, ri in df_i.iterrows()]
-            sheet_livres.append_rows(lignes); refresh()
+            try:
+                df_i = pd.read_excel(up).fillna("")
+                lignes = [[str(ri['Titre']), str(ri.get('Auteur','')), utilisateur, str(ri.get('Avis','')), "Libre", "", str(ri.get('Note','📚📚')), datetime.now().strftime("%Y-%m-%d"), ""] for _, ri in df_i.iterrows()]
+                sheet_livres.append_rows(lignes); refresh()
+            except Exception as e: st.error(f"Erreur : {e}")
 
 # --- 5. GÉRANCE ---
 if utilisateur in ["Didier", "Amélie"]:
@@ -225,14 +233,55 @@ if utilisateur in ["Didier", "Amélie"]:
             if st.form_submit_button("Créer Membre"):
                 sheet_membres.append_row([n, s, t, "", p, r]); refresh()
 
-# --- 6. MODE D'EMPLOI ---
+# --- 6. MODE D'EMPLOI COMPLET ---
 with onglets[-1]:
-    st.title("📖 Aide & Mode d'emploi")
-    with st.expander("📱 Installation sur mobile", expanded=True):
-        st.markdown("* **iPhone (Safari)** : Icône Partage -> « Sur l'écran d'accueil ».\n* **Android (Chrome)** : 3 petits points -> « Installer l'application ».")
-    with st.expander("🔍 Légende des icônes"):
-        st.markdown("* 📗 **Vert** : Disponible immédiatement.\n* ⏳ **Sablier** : Demande envoyée, en attente de réponse.\n* 📕 **Rouge** : Livre actuellement en prêt.")
-    with st.expander("👤 Mon Profil"):
-        st.markdown("Utilisez les boutons de raccourcis en haut de votre profil pour naviguer rapidement entre vos prêts, vos emprunts et votre collection.")
+    st.title("📖 Mode d'emploi Méli-Mélo")
+    
+    with st.expander("📱 1. Installer l'application (Très recommandé)", expanded=True):
+        st.markdown("""
+        Méli-Mélo s'installe sur votre écran d'accueil pour être accessible en un clic :
+        * **Sur iPhone (Safari)** : Appuyez sur l'icône **Partage** (carré avec une flèche vers le haut) -> Faites défiler vers le bas -> Cliquez sur **« Sur l'écran d'accueil »**.
+        * **Sur Android (Chrome)** : Appuyez sur les **3 petits points** en haut à droite -> Cliquez sur **« Installer l'application »**.
+        """)
+
+    with st.expander("🔐 2. Connexion et Identité"):
+        st.markdown("""
+        Pour éviter toute erreur d'emprunt, chaque membre a son propre accès :
+        * Sélectionnez votre prénom dans la liste.
+        * Saisissez votre **Code Secret** personnel (demandé à Didier ou Amélie).
+        * Une fois connecté, votre nom reste affiché en haut. Si vous rafraîchissez la page, le code vous sera redemandé par sécurité.
+        """)
+
+    with st.expander("🔍 3. Bibliothèque et Recherche"):
+        st.markdown("""
+        * **Recherche** : Tapez un titre ou un auteur pour filtrer instantanément.
+        * **Filtre "Disponible"** : Utilisez le menu de tri pour voir uniquement les livres prêts à être empruntés.
+        * **Code couleur :**
+            * 📗 **Vert** : Disponible ! Cliquez sur "Demander".
+            * ⏳ **Sablier** : Demande envoyée, en attente que le propriétaire valide.
+            * 📕 **Rouge** : Livre déjà prêté à un autre membre.
+        """)
+
+    with st.expander("🤝 4. Emprunter et Prêter (Cycle WhatsApp)"):
+        st.markdown("""
+        1. **La Demande** : L'emprunteur clique sur "Demander".
+        2. **La Validation** : Le proprio voit une alerte orange. Il va dans l'onglet **🤝 Demandes** pour **✅ Valider**.
+        3. **Le Contact** : Une fois validé, un bouton **WhatsApp** apparaît pour le propriétaire. Il permet d'envoyer un message pré-rempli pour fixer le rendez-vous.
+        4. **Le Retour** : Quand le livre revient, le proprio va dans **Mon Profil** et clique sur **🔄 Rendu**.
+        """)
+
+    with st.expander("💬 5. Donner son avis"):
+        st.markdown("""
+        * Sous chaque livre, cliquez sur **💬 Avis/Note** pour noter votre lecture.
+        * Vos notes s'ajoutent aux avis des autres lecteurs. Cela aide tout le club à choisir ses futures pépites !
+        """)
+
+    with st.expander("👤 6. Mon Profil (Tableau de Bord)"):
+        st.markdown("""
+        C'est votre journal de bord personnel. Utilisez les raccourcis en haut pour naviguer :
+        * **Mes Prêts** : Surveillez qui a vos livres et marquez-les comme "Rendus" ici.
+        * **Mes Emprunts** : La liste de ce que vous avez chez vous (ou en attente).
+        * **Ma Collection** : Gérez vos livres et supprimez ceux que vous ne voulez plus partager.
+        """)
 
 st.caption("Une création DJA’WEB avec l’aide de Gemini IA")
