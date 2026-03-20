@@ -55,6 +55,10 @@ LISTE_CATS = ["Roman", "Policier", "BD / Manga", "Cuisine", "Jeunesse", "Dévelo
 def envoyer_whatsapp(message):
     return f"https://api.whatsapp.com/send?text={urllib.parse.quote(message)}"
 
+def generer_lien_mail(sujet, corps):
+    dest = "didier.jaccoud.144@gmail.com"
+    return f"mailto:{dest}?subject={urllib.parse.quote(sujet)}&body={urllib.parse.quote(corps)}"
+
 # --- CONNEXION ---
 if not st.session_state.connecte:
     st.title("🔐 Accès Méli-Mélo")
@@ -162,7 +166,7 @@ with onglets[1]:
                     sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, ""); refresh()
     else: st.write("Aucune nouvelle demande.")
 
-# --- 3. PROFIL (RECHERCHE TOTALE TITRE/AUTEUR/MEMBRE) ---
+# --- 3. PROFIL (AVEC SUPPORT DIDIER) ---
 with onglets[2]:
     st.write(f"## 👤 Profil de {utilisateur}")
     
@@ -179,7 +183,6 @@ with onglets[2]:
     st.write("### 📤 Mes livres en voyage (Prêts)")
     mes_sorties = df_livres[(df_livres[COL["Proprio"]] == utilisateur) & (df_livres[COL["Statut"]] != "Libre")]
     if search_prof:
-        # CORRECTION : Ajout de la recherche par AUTEUR ici
         mes_sorties = mes_sorties[mes_sorties[COL["Titre"]].astype(str).str.lower().str.contains(search_prof) | 
                                   mes_sorties[COL["Auteur"]].astype(str).str.lower().str.contains(search_prof) |
                                   mes_sorties[COL["Emprunteur"]].astype(str).str.lower().str.contains(search_prof)]
@@ -204,12 +207,10 @@ with onglets[2]:
     st.write("### 📥 Livres que j'ai empruntés")
     mes_emprunts = df_livres[(df_livres[COL["Emprunteur"]] == utilisateur) & (df_livres[COL["Statut"]] != "Libre")]
     if search_prof:
-        # CORRECTION : Ajout de la recherche par AUTEUR ici
         mes_emprunts = mes_emprunts[mes_emprunts[COL["Titre"]].astype(str).str.lower().str.contains(search_prof) | 
                                     mes_emprunts[COL["Auteur"]].astype(str).str.lower().str.contains(search_prof) |
                                     mes_emprunts[COL["Proprio"]].astype(str).str.lower().str.contains(search_prof)]
     if not mes_emprunts.empty:
-        # On affiche l'auteur dans le tableau pour que ce soit clair
         recap_e = mes_emprunts[[COL["Titre"], COL["Auteur"], COL["Proprio"], COL["Statut"]]].copy()
         recap_e[COL["Statut"]] = recap_e[COL["Statut"]].replace({"Demandé": "⏳ En attente", "Emprunté": "🏠 Chez moi"})
         st.table(recap_e)
@@ -229,7 +230,24 @@ with onglets[2]:
             with st.expander(f"📙 {r[COL['Titre']]} - {r[COL['Auteur']]} ({r[COL['Statut']]})"):
                 if st.button("❌ Supprimer définitivement", key=f"del_{idx}"):
                     oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2); sheet_livres.delete_rows(oidx); refresh()
-    else: st.info("Aucun livre correspondant dans votre collection.")
+    else: st.info("Aucun livre correspondant.")
+
+    st.write("---")
+    # SECTION SIGNALEMENT BUG / SUGGESTION
+    st.subheader("💡 Une idée ? Un problème ?")
+    st.write("Aidez-nous à améliorer la boîte à livres de Méli-Mélo !")
+    with st.expander("🛠️ Signaler un bug ou faire une suggestion"):
+        msg_bug = st.text_area("Votre message", placeholder="Expliquez-nous tout ici...")
+        type_msg = st.selectbox("Type de message", ["Suggestion d'adaptation", "Signalement de bug"])
+        
+        c_mail, c_wa = st.columns(2)
+        with c_mail:
+            sujet = f"La boîte à livres de Meli-Melo - {type_msg}"
+            corps = f"Bonjour Didier,\n\nMessage de {utilisateur} :\n{msg_bug}"
+            st.link_button("📧 Envoyer par Mail", generer_lien_mail(sujet, corps))
+        with c_wa:
+            wa_text = f"*Méli-Mélo Support*\nDe: {utilisateur}\nType: {type_msg}\nMessage: {msg_bug}"
+            st.link_button("📱 Envoyer par WhatsApp", envoyer_whatsapp(wa_text))
 
 # --- 4. AJOUTER ---
 with onglets[3]:
@@ -258,20 +276,68 @@ if utilisateur in ["Didier", "Amélie"]:
             n, s, t, p, r = st.text_input("Prénom"), st.text_input("Code Secret"), st.text_input("Tél"), st.text_input("Lieu"), st.text_input("Retrait")
             if st.form_submit_button("Créer"): sheet_membres.append_row([n, s, t, "", p, r]); refresh()
 
-# --- 6. MODE D'EMPLOI ---
+# --- 6. MODE D'EMPLOI DÉTAILLÉ ---
 with onglets[-1]:
     st.title("📖 Mode d'emploi Méli-Mélo")
-    with st.expander("📱 1. Installation", expanded=True):
-        st.markdown("* **iPhone (Safari)** : Partage -> « Sur l'écran d'accueil ».\n* **Android (Chrome)** : 3 points -> « Installer l'application ».")
-    with st.expander("🔐 2. Connexion"):
-        st.markdown("Choisissez votre prénom et entrez votre code secret personnel.")
-    with st.expander("🔍 3. Recherche et Profil"):
-        st.markdown("Recherchez par titre, auteur ou catégorie. Dans **Mon Profil**, cherchez un auteur pour voir tous ses livres que vous avez prêtés ou empruntés.")
-    with st.expander("🤝 4. Emprunter / Prêter"):
-        st.markdown("Demande -> Validation -> WhatsApp. Une fois rendu, le proprio clique sur **🔄 Rendu**.")
-    with st.expander("💬 5. Avis"):
-        st.markdown("Partagez vos impressions via le bouton **💬 Avis/Note**.")
-    with st.expander("👤 6. Mon Profil"):
-        st.markdown("Suivez vos prêts et emprunts. La barre de recherche du profil cherche désormais dans les titres, les auteurs et les noms des membres.")
+    
+    with st.expander("📱 1. Installation de l'application", expanded=True):
+        st.markdown("""
+        **Pourquoi l'installer ?** Pour l'ouvrir comme une vraie application sur votre téléphone, sans passer par votre navigateur.
+        
+        * **Sur iPhone (Safari)** : Appuyez sur l'icône de **Partage** (le carré avec une flèche vers le haut), faites défiler le menu et sélectionnez **« Sur l'écran d'accueil »**.
+        * **Sur Android (Chrome)** : Appuyez sur les **3 petits points** en haut à droite et sélectionnez **« Installer l'application »**.
+        """)
+
+    with st.expander("🔐 2. Connexion sécurisée"):
+        st.markdown("""
+        Pour protéger vos données, l'accès est personnel :
+        1.  Sélectionnez votre **Prénom** dans la liste déroulante.
+        2.  Entrez votre **Code Secret** (4 caractères minimum).
+        * *Si vous n'avez pas de code, demandez-le à Didier ou Amélie.*
+        * *En cas de déconnexion ou de rafraîchissement de la page, le code vous sera redemandé pour confirmer votre identité.*
+        """)
+
+    with st.expander("🔍 3. Explorer la Bibliothèque"):
+        st.markdown("""
+        L'onglet **Bibliothèque** affiche tous les livres partagés par les membres.
+        
+        * **Barre de Recherche** : Vous pouvez filtrer par **Titre**, par **Auteur** ou par **Catégorie** (Roman, BD, Cuisine...).
+        * **Tri** : Vous pouvez afficher les livres les mieux notés ou uniquement ceux qui sont **disponibles (📗 Verts)**.
+        * **Légende des couleurs** :
+            * 📗 **Vert** : Libre. Vous pouvez le demander immédiatement.
+            * ⏳ **Orange** : Demandé. Quelqu'un a déjà posé une option dessus.
+            * 📕 **Rouge** : Prêté. Le livre est actuellement chez un membre.
+        """)
+
+    with st.expander("🤝 4. Emprunter et Prêter un livre"):
+        st.markdown("""
+        Le système repose sur la confiance et la communication via WhatsApp :
+        
+        **Côté Emprunteur :**
+        1.  Trouvez un livre qui vous plaît (📗).
+        2.  Cliquez sur le bouton **« Demander »**. Le livre passera en ⏳.
+        
+        **Côté Propriétaire :**
+        1.  Vous recevrez une alerte orange en haut de votre écran.
+        2.  Allez dans l'onglet **🤝 Demandes** pour **✅ Valider** le prêt.
+        3.  Un bouton **WhatsApp** apparaîtra : cliquez dessus pour envoyer un message automatique à l'emprunteur et fixer le rendez-vous pour l'échange !
+        """)
+
+    with st.expander("💬 5. Donner son avis et Noter"):
+        st.markdown("""
+        Partagez vos lectures pour guider les autres membres :
+        1.  Sous chaque livre dans la Bibliothèque, vous trouverez une section **💬 Avis/Note**.
+        2.  Attribuez une note (de 1 à 4 livres 📚) et rédigez un petit commentaire.
+        3.  Vos avis sont visibles par tous les membres en cliquant sur **« Voir les avis »**.
+        """)
+
+    with st.expander("👤 6. Gérer son Profil et sa Collection"):
+        st.markdown("""
+        L'onglet **Mon Profil** est votre centre de gestion :
+        * **Navigation Rapide** : Utilisez les boutons en haut pour sauter directement à vos prêts, vos emprunts ou votre collection.
+        * **Recherche Globale** : Retrouvez un livre précis dans votre historique (cherchez par titre ou par auteur).
+        * **Rendre un livre** : Dès que vous récupérez un livre que vous aviez prêté, cliquez sur le bouton **🔄 Rendu**. Le livre redeviendra disponible (📗) pour tout le club.
+        * **Support** : Si vous rencontrez un souci, utilisez le formulaire en bas de votre profil pour nous contacter !
+        """)
 
 st.caption("Une création DJA’WEB avec l’aide de Gemini IA")
