@@ -58,7 +58,6 @@ def envoyer_whatsapp(message):
 # --- CONNEXION ---
 if not st.session_state.connecte:
     st.title("🔐 Accès Méli-Mélo")
-    st.write("Bienvenue ! Veuillez vous identifier pour entrer.")
     noms_disponibles = sorted(df_membres['Prénom'].unique().tolist())
     nom_choisi = st.selectbox("Qui êtes-vous ?", noms_disponibles)
     code_saisi = st.text_input("Code Secret", type="password")
@@ -97,18 +96,18 @@ onglets = st.tabs(onglets_noms)
 
 # --- 1. BIBLIOTHÈQUE ---
 with onglets[0]:
-    recherche = st.text_input("🔍 Rechercher (Titre, Auteur, Catégorie)...", "").lower()
+    recherche_bib = st.text_input("🔍 Rechercher (Titre, Auteur, Catégorie)...", "").lower()
     tri = st.selectbox("Trier par", ["Derniers ajouts", "Note", "Titre (A-Z)", "📗 Disponible uniquement"])
     df_tri = df_livres.copy()
     if tri == "📗 Disponible uniquement": df_tri = df_tri[df_tri[COL["Statut"]] == "Libre"]
-    if recherche:
-        df_tri = df_tri[df_tri[COL["Titre"]].astype(str).str.lower().str.contains(recherche) | 
-                        df_tri[COL["Auteur"]].astype(str).str.lower().str.contains(recherche) |
-                        df_tri[COL["Cat"]].astype(str).str.lower().str.contains(recherche)]
+    if recherche_bib:
+        df_tri = df_tri[df_tri[COL["Titre"]].astype(str).str.lower().str.contains(recherche_bib) | 
+                        df_tri[COL["Auteur"]].astype(str).str.lower().str.contains(recherche_bib) |
+                        df_tri[COL["Cat"]].astype(str).str.lower().str.contains(recherche_bib)]
     
     if tri == "Titre (A-Z)": df_tri = df_tri.sort_values(by=COL["Titre"])
     elif tri == "Note": df_tri = df_tri.sort_values(by=COL["Note"], ascending=False)
-    elif tri != "📗 Disponible uniquement": df_tri = df_tri.iloc[::-1]
+    else: df_tri = df_tri.iloc[::-1]
 
     for idx, row in df_tri.iterrows():
         statut, p_livre = str(row[COL["Statut"]]), str(row[COL["Proprio"]])
@@ -141,7 +140,7 @@ with onglets[0]:
 # --- 2. DEMANDES ---
 with onglets[1]:
     st.subheader("⏳ Demandes à traiter")
-    search_dem = st.text_input("🔍 Filtrer les demandes (nom, titre)...", key="filter_dem").lower()
+    search_dem = st.text_input("🔍 Filtrer les demandes...").lower()
     df_dem_filtered = mes_demandes_urgentes.copy()
     if search_dem:
         df_dem_filtered = df_dem_filtered[df_dem_filtered[COL["Titre"]].str.lower().str.contains(search_dem) | 
@@ -151,30 +150,28 @@ with onglets[1]:
         for idx, r in df_dem_filtered.iterrows():
             emp = r[COL["Emprunteur"]]
             st.info(f"👉 **{emp}** attend : **{r[COL['Titre']]}**")
-            col1, col2 = st.columns(2)
-            with col1:
+            c1, c2 = st.columns(2)
+            with c1:
                 if st.button(f"✅ Valider", key=f"v_{idx}"):
                     oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
                     sheet_livres.update_cell(oidx, 5, "Emprunté")
                     st.success("Validé !"); st.link_button("📱 WhatsApp", envoyer_whatsapp(f"C'est OK pour '{r[COL['Titre']]}'. On s'organise ?"))
-            with col2:
+            with c2:
                 if st.button(f"❌ Décliner", key=f"d_{idx}"):
                     oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
                     sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, ""); refresh()
     else: st.write("Aucune nouvelle demande.")
 
-# --- 3. PROFIL ---
+# --- 3. PROFIL (CORRIGÉ SANS BOUTONS PARTOUT) ---
 with onglets[2]:
-    st.subheader(f"👤 Profil de {utilisateur}")
+    st.write(f"## 👤 Profil de {utilisateur}")
     
-    # Navigation Rapide
     st.markdown("""<div style="display: flex; gap: 10px; margin-bottom: 20px;">
             <a href="#prets" style="text-decoration: none; background-color: #f0f2f6; color: #31333F; padding: 5px 15px; border-radius: 5px; border: 1px solid #dcdcdc; font-size: 14px;">📤 Mes Prêts</a>
             <a href="#emprunts" style="text-decoration: none; background-color: #f0f2f6; color: #31333F; padding: 5px 15px; border-radius: 5px; border: 1px solid #dcdcdc; font-size: 14px;">📥 Mes Emprunts</a>
             <a href="#collection" style="text-decoration: none; background-color: #f0f2f6; color: #31333F; padding: 5px 15px; border-radius: 5px; border: 1px solid #dcdcdc; font-size: 14px;">📚 Ma Collection</a>
         </div>""", unsafe_allow_html=True)
 
-    # RECHERCHE PROFIL
     search_prof = st.text_input("🔍 Rechercher dans mon historique (titre, auteur, membre)...", "").lower()
 
     # SECTION PRÊTS
@@ -186,17 +183,18 @@ with onglets[2]:
                                   mes_sorties[COL["Emprunteur"]].astype(str).str.lower().str.contains(search_prof)]
     if not mes_sorties.empty:
         for idx, rs in mes_sorties.iterrows():
-            stat_txt = "⏳ Attente" if rs[COL["Statut"]] == "Demandé" else "📕 Chez l'emprunteur"
-            c1, c2, c3 = st.columns([3, 1.5, 1])
-            c1.write(f"**{rs[COL['Titre']]}** ({rs[COL['Emprunteur']]})"); c2.write(stat_txt)
-            with c3:
-                if st.button("🔄 Rendu", key=f"rendu_{idx}"):
-                    oidx = int(df_livres.index[df_livres[COL['Titre']] == rs[COL['Titre']]][0] + 2)
-                    sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, ""); refresh()
-    else: st.info("Aucun prêt correspondant.")
+            stat_txt = "⏳ Attente" if rs[COL["Statut"]] == "Demandé" else "📕 Prêté"
+            with st.container():
+                c1, c2, c3 = st.columns([3, 1.5, 1])
+                c1.write(f"**{rs[COL['Titre']]}**\n({rs[COL['Emprunteur']]})")
+                c2.write(stat_txt)
+                with c3:
+                    if st.button("🔄 Rendu", key=f"rendu_{idx}"):
+                        oidx = int(df_livres.index[df_livres[COL['Titre']] == rs[COL['Titre']]][0] + 2)
+                        sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, ""); refresh()
+                st.markdown("---")
+    else: st.info("Aucun prêt actif correspondant.")
 
-    st.write("---")
-    
     # SECTION EMPRUNTS
     st.markdown('<div id="emprunts"></div>', unsafe_allow_html=True)
     st.write("### 📥 Livres que j'ai empruntés")
@@ -210,8 +208,6 @@ with onglets[2]:
         st.table(recap_e)
     else: st.info("Aucun emprunt correspondant.")
     
-    st.write("---")
-    
     # SECTION COLLECTION
     st.markdown('<div id="collection"></div>', unsafe_allow_html=True)
     st.write("### 📚 Ma collection complète")
@@ -222,9 +218,8 @@ with onglets[2]:
     if not mes_l.empty:
         for idx, r in mes_l.iterrows():
             with st.expander(f"📙 {r[COL['Titre']]} ({r[COL['Statut']]})"):
-                if st.button("Supprimer", key=f"del_{idx}"):
+                if st.button("❌ Supprimer définitivement", key=f"del_{idx}"):
                     oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2); sheet_livres.delete_rows(oidx); refresh()
-    else: st.info("Aucun livre dans la collection.")
 
 # --- 4. AJOUTER ---
 with onglets[3]:
@@ -253,14 +248,46 @@ if utilisateur in ["Didier", "Amélie"]:
             n, s, t, p, r = st.text_input("Prénom"), st.text_input("Code Secret"), st.text_input("Tél"), st.text_input("Lieu"), st.text_input("Retrait")
             if st.form_submit_button("Créer"): sheet_membres.append_row([n, s, t, "", p, r]); refresh()
 
-# --- 6. MODE D'EMPLOI ---
+# --- 6. MODE D'EMPLOI COMPLET (RESTAURÉ) ---
 with onglets[-1]:
     st.title("📖 Mode d'emploi Méli-Mélo")
-    with st.expander("📱 1. Installation", expanded=True):
-        st.markdown("* **iPhone (Safari)** : Partage -> « Sur l'écran d'accueil ».\n* **Android (Chrome)** : 3 points -> « Installer ».")
-    with st.expander("🔐 2. Connexion"):
-        st.markdown("Choisissez votre prénom et entrez votre code secret personnel.")
-    with st.expander("🔍 3. Recherche et Profil"):
-        st.markdown("Recherchez par titre, auteur ou catégorie. Dans **Mon Profil**, une barre de recherche dédiée vous aide à gérer vos dizaines de prêts.")
+    
+    with st.expander("📱 1. Installation sur Smartphone", expanded=True):
+        st.markdown("""
+        * **iPhone (Safari)** : Appuyez sur **Partage** -> Faites défiler -> **« Sur l'écran d'accueil »**.
+        * **Android (Chrome)** : Appuyez sur les **3 points** -> **« Installer l'application »**.
+        """)
+
+    with st.expander("🔐 2. Connexion et Identité"):
+        st.markdown("""
+        * Choisissez votre prénom et entrez votre **Code Secret** personnel.
+        * Cela permet de s'assurer que vous gérez vos propres livres et non ceux des autres.
+        """)
+
+    with st.expander("🔍 3. Bibliothèque, Recherche et Catégories"):
+        st.markdown("""
+        * **Recherche** : Filtrez par titre, auteur ou **catégorie** (Roman, BD, Cuisine...).
+        * **Code couleur :**
+            * 📗 **Vert** : Disponible !
+            * ⏳ **Sablier** : Demande envoyée, en attente du propriétaire.
+            * 📕 **Rouge** : Livre déjà prêté.
+        """)
+
+    with st.expander("🤝 4. Emprunter et Prêter (Cycle WhatsApp)"):
+        st.markdown("""
+        1. **Demande** : Cliquez sur "Demander" sur un livre vert.
+        2. **Validation** : Le proprio va dans **🤝 Demandes** pour **✅ Valider**.
+        3. **WhatsApp** : Un bouton direct apparaît au proprio pour organiser le prêt.
+        4. **Retour** : Quand vous récupérez votre livre, allez dans **Mon Profil** et cliquez sur **🔄 Rendu**.
+        """)
+
+    with st.expander("💬 5. Donner son avis"):
+        st.markdown("Utilisez le bouton **💬 Avis/Note** sous un livre pour partager votre retour de lecture !")
+
+    with st.expander("👤 6. Mon Profil & Recherche Historique"):
+        st.markdown("""
+        * Suivez vos prêts sortis, vos emprunts et votre collection.
+        * **Barre de recherche Profil** : Retrouvez un livre précis dans votre historique en un clin d'œil.
+        """)
 
 st.caption("Une création DJA’WEB avec l’aide de Gemini IA")
