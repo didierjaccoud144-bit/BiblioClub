@@ -96,14 +96,14 @@ onglets = st.tabs(onglets_noms)
 
 # --- 1. BIBLIOTHÈQUE ---
 with onglets[0]:
-    recherche = st.text_input("🔍 Rechercher (Titre, Auteur, Catégorie)...", "").lower()
+    recherche_bib = st.text_input("🔍 Rechercher dans la bibliothèque...", "").lower()
     tri = st.selectbox("Trier par", ["Derniers ajouts", "Note", "Titre (A-Z)", "📗 Disponible uniquement"])
     df_tri = df_livres.copy()
     if tri == "📗 Disponible uniquement": df_tri = df_tri[df_tri[COL["Statut"]] == "Libre"]
-    if recherche:
-        df_tri = df_tri[df_tri[COL["Titre"]].astype(str).str.lower().str.contains(recherche) | 
-                        df_tri[COL["Auteur"]].astype(str).str.lower().str.contains(recherche) |
-                        df_tri[COL["Cat"]].astype(str).str.lower().str.contains(recherche)]
+    if recherche_bib:
+        df_tri = df_tri[df_tri[COL["Titre"]].astype(str).str.lower().str.contains(recherche_bib) | 
+                        df_tri[COL["Auteur"]].astype(str).str.lower().str.contains(recherche_bib) |
+                        df_tri[COL["Cat"]].astype(str).str.lower().str.contains(recherche_bib)]
     
     if tri == "Titre (A-Z)": df_tri = df_tri.sort_values(by=COL["Titre"])
     elif tri == "Note": df_tri = df_tri.sort_values(by=COL["Note"], ascending=False)
@@ -125,7 +125,7 @@ with onglets[0]:
                         oidx = int(df_livres.index[df_livres[COL['Titre']] == row[COL['Titre']]][0] + 2)
                         sheet_livres.update_cell(oidx, 5, "Demandé"); sheet_livres.update_cell(oidx, 6, utilisateur); refresh()
                 with st.expander("💬 Avis/Note"):
-                    n_l = st.select_slider("Note", options=["📚","📚📚","📚📚📚","📚📚📚📚"], key=f"n_{idx}")
+                    n_l = st.select_slider("Ma Note", options=["📚","📚📚","📚📚📚","📚📚📚📚"], key=f"n_{idx}")
                     c_l = st.text_area("Retour", key=f"c_{idx}", height=70)
                     if st.button("Publier", key=f"p_{idx}"):
                         oidx = int(df_livres.index[df_livres[COL['Titre']] == row[COL['Titre']]][0] + 2)
@@ -140,7 +140,7 @@ with onglets[0]:
 # --- 2. DEMANDES ---
 with onglets[1]:
     st.subheader("⏳ Demandes à traiter")
-    search_dem = st.text_input("🔍 Filtrer les demandes (nom, titre)...").lower()
+    search_dem = st.text_input("🔍 Filtrer les demandes (nom, titre)...", key="filter_dem").lower()
     df_dem_filtered = mes_demandes_urgentes.copy()
     if search_dem:
         df_dem_filtered = df_dem_filtered[df_dem_filtered[COL["Titre"]].str.lower().str.contains(search_dem) | 
@@ -162,17 +162,27 @@ with onglets[1]:
                     sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, ""); refresh()
     else: st.write("Aucune nouvelle demande.")
 
-# --- 3. PROFIL ---
+# --- 3. PROFIL (AVEC RECHERCHE GLOBALE PROFIL) ---
 with onglets[2]:
     st.subheader(f"👤 Profil de {utilisateur}")
+    
+    # Navigation Rapide
     st.markdown("""<div style="display: flex; gap: 10px; margin-bottom: 20px;">
             <a href="#prets" style="text-decoration: none; background-color: #f0f2f6; color: #31333F; padding: 5px 15px; border-radius: 5px; border: 1px solid #dcdcdc; font-size: 14px;">📤 Mes Prêts</a>
             <a href="#emprunts" style="text-decoration: none; background-color: #f0f2f6; color: #31333F; padding: 5px 15px; border-radius: 5px; border: 1px solid #dcdcdc; font-size: 14px;">📥 Mes Emprunts</a>
             <a href="#collection" style="text-decoration: none; background-color: #f0f2f6; color: #31333F; padding: 5px 15px; border-radius: 5px; border: 1px solid #dcdcdc; font-size: 14px;">📚 Ma Collection</a>
         </div>""", unsafe_allow_html=True)
 
-    st.markdown('<div id="prets"></div> ### 📤 Mes livres en voyage (Prêts)', unsafe_allow_html=True)
+    # BARRE DE RECHERCHE GLOBALE POUR LE PROFIL
+    search_prof = st.text_input("🔍 Rechercher dans mon historique (titre, auteur, membre)...", "").lower()
+
+    # Filtre pour les prêts sortis
     mes_sorties = df_livres[(df_livres[COL["Proprio"]] == utilisateur) & (df_livres[COL["Statut"]] != "Libre")]
+    if search_prof:
+        mes_sorties = mes_sorties[mes_sorties[COL["Titre"]].astype(str).str.lower().str.contains(search_prof) | 
+                                  mes_sorties[COL["Emprunteur"]].astype(str).str.lower().str.contains(search_prof)]
+
+    st.markdown('<div id="prets"></div> ### 📤 Mes livres en voyage (Prêts)', unsafe_allow_html=True)
     if not mes_sorties.empty:
         for idx, rs in mes_sorties.iterrows():
             stat_txt = "⏳ Attente" if rs[COL["Statut"]] == "Demandé" else "📕 Chez l'emprunteur"
@@ -182,24 +192,36 @@ with onglets[2]:
                 if st.button("🔄 Rendu", key=f"rendu_{idx}"):
                     oidx = int(df_livres.index[df_livres[COL['Titre']] == rs[COL['Titre']]][0] + 2)
                     sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, ""); refresh()
-    else: st.info("Aucun livre prêté.")
+    else: st.info("Aucun prêt correspondant à cette recherche.")
 
     st.write("---")
-    st.markdown('<div id="emprunts"></div> ### 📥 Livres que j\'ai empruntés', unsafe_allow_html=True)
+    # Filtre pour les emprunts chez soi
     mes_emprunts = df_livres[(df_livres[COL["Emprunteur"]] == utilisateur) & (df_livres[COL["Statut"]] != "Libre")]
+    if search_prof:
+        mes_emprunts = mes_emprunts[mes_emprunts[COL["Titre"]].astype(str).str.lower().str.contains(search_prof) | 
+                                    mes_emprunts[COL["Proprio"]].astype(str).str.lower().str.contains(search_prof)]
+
+    st.markdown('<div id="emprunts"></div> ### 📥 Livres que j\'ai empruntés', unsafe_allow_html=True)
     if not mes_emprunts.empty:
         recap_e = mes_emprunts[[COL["Titre"], COL["Proprio"], COL["Statut"]]].copy()
         recap_e[COL["Statut"]] = recap_e[COL["Statut"]].replace({"Demandé": "⏳ En attente", "Emprunté": "🏠 Chez moi"})
         st.table(recap_e)
-    else: st.info("Aucun emprunt.")
+    else: st.info("Aucun emprunt correspondant.")
     
     st.write("---")
-    st.markdown('<div id="collection"></div> ### 📚 Ma collection', unsafe_allow_html=True)
-    mes_l = df_livres[df_livres[COL["Proprio"]] == utilisateur]
-    for idx, r in mes_l.iterrows():
-        with st.expander(f"📙 {r[COL['Titre']]} ({r[COL['Statut']]})"):
-            if st.button("Supprimer", key=f"del_{idx}"):
-                oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2); sheet_livres.delete_rows(oidx); refresh()
+    # Filtre pour sa collection personnelle
+    mes_collec = df_livres[df_livres[COL["Proprio"]] == utilisateur]
+    if search_prof:
+        mes_collec = mes_collec[mes_collec[COL["Titre"]].astype(str).str.lower().str.contains(search_prof) | 
+                                mes_collec[COL["Auteur"]].astype(str).str.lower().str.contains(search_prof)]
+
+    st.markdown('<div id="collection"></div> ### 📚 Ma collection complète', unsafe_allow_html=True)
+    if not mes_collec.empty:
+        for idx, r in mes_collec.iterrows():
+            with st.expander(f"📙 {r[COL['Titre']]} ({r[COL['Statut']]})"):
+                if st.button("Supprimer", key=f"del_{idx}"):
+                    oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2); sheet_livres.delete_rows(oidx); refresh()
+    else: st.info("Aucun livre dans votre collection ne correspond.")
 
 # --- 4. AJOUTER ---
 with onglets[3]:
@@ -228,20 +250,15 @@ if utilisateur in ["Didier", "Amélie"]:
             n, s, t, p, r = st.text_input("Prénom"), st.text_input("Code Secret"), st.text_input("Tél"), st.text_input("Lieu"), st.text_input("Retrait")
             if st.form_submit_button("Créer"): sheet_membres.append_row([n, s, t, "", p, r]); refresh()
 
-# --- 6. MODE D'EMPLOI COMPLET ---
+# --- 6. MODE D'EMPLOI ---
 with onglets[-1]:
     st.title("📖 Mode d'emploi Méli-Mélo")
-    with st.expander("📱 1. Installation", expanded=True):
-        st.markdown("* **iPhone (Safari)** : Partage -> « Sur l'écran d'accueil ».\n* **Android (Chrome)** : 3 points -> « Installer l'application ».")
-    with st.expander("🔐 2. Connexion"):
-        st.markdown("Choisissez votre prénom et entrez votre code secret personnel.")
-    with st.expander("🔍 3. Recherche et Catégories"):
-        st.markdown("Filtrez par titre, auteur ou **catégorie** (Roman, BD, etc.) dans la barre de recherche.")
-    with st.expander("🤝 4. Emprunter / Prêter"):
-        st.markdown("Demande -> Validation -> WhatsApp. Une fois rendu, le proprio clique sur **🔄 Rendu**.")
-    with st.expander("💬 5. Avis"):
-        st.markdown("Partagez vos impressions via le bouton **💬 Avis/Note**.")
-    with st.expander("👤 6. Mon Profil"):
-        st.markdown("Suivez vos prêts et emprunts en un clin d'oeil grâce aux boutons de raccourcis.")
+    with st.expander("👤 Mon Profil & Recherche"):
+        st.markdown("""
+        L'onglet **Mon Profil** dispose désormais d'une barre de recherche intelligente. 
+        Elle vous permet de retrouver un livre précis parmi vos prêts ou vos emprunts en tapant simplement son nom ou celui de l'emprunteur.
+        """)
+    with st.expander("📱 Installation"):
+        st.markdown("* **iPhone** : Safari -> Partage -> « Sur l'écran d'accueil ».")
 
 st.caption("Une création DJA’WEB avec l’aide de Gemini IA")
