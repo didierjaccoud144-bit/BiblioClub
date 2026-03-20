@@ -166,14 +166,16 @@ with onglets[1]:
                     sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, ""); refresh()
     else: st.write("Aucune nouvelle demande.")
 
-# --- 3. PROFIL (AVEC SUPPORT DIDIER) ---
+# --- 3. PROFIL (4 BOUTONS) ---
 with onglets[2]:
     st.write(f"## 👤 Profil de {utilisateur}")
     
-    st.markdown("""<div style="display: flex; gap: 10px; margin-bottom: 20px;">
-            <a href="#prets" style="text-decoration: none; background-color: #f0f2f6; color: #31333F; padding: 5px 15px; border-radius: 5px; border: 1px solid #dcdcdc; font-size: 14px;">📤 Mes Prêts</a>
-            <a href="#emprunts" style="text-decoration: none; background-color: #f0f2f6; color: #31333F; padding: 5px 15px; border-radius: 5px; border: 1px solid #dcdcdc; font-size: 14px;">📥 Mes Emprunts</a>
-            <a href="#collection" style="text-decoration: none; background-color: #f0f2f6; color: #31333F; padding: 5px 15px; border-radius: 5px; border: 1px solid #dcdcdc; font-size: 14px;">📚 Ma Collection</a>
+    # Navigation Rapide (4 boutons)
+    st.markdown("""<div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px;">
+            <a href="#prets" style="text-decoration: none; background-color: #f0f2f6; color: #31333F; padding: 5px 12px; border-radius: 5px; border: 1px solid #dcdcdc; font-size: 13px;">📤 Prêts</a>
+            <a href="#emprunts" style="text-decoration: none; background-color: #f0f2f6; color: #31333F; padding: 5px 12px; border-radius: 5px; border: 1px solid #dcdcdc; font-size: 13px;">📥 Emprunts</a>
+            <a href="#collection" style="text-decoration: none; background-color: #f0f2f6; color: #31333F; padding: 5px 12px; border-radius: 5px; border: 1px solid #dcdcdc; font-size: 13px;">📚 Collection</a>
+            <a href="#support" style="text-decoration: none; background-color: #f0f2f6; color: #31333F; padding: 5px 12px; border-radius: 5px; border: 1px solid #dcdcdc; font-size: 13px;">🛠️ Support</a>
         </div>""", unsafe_allow_html=True)
 
     search_prof = st.text_input("🔍 Rechercher par titre, auteur ou membre...", "").lower()
@@ -233,21 +235,20 @@ with onglets[2]:
     else: st.info("Aucun livre correspondant.")
 
     st.write("---")
-    # SECTION SIGNALEMENT BUG / SUGGESTION
+    # SECTION SUPPORT (ANCRE)
+    st.markdown('<div id="support"></div>', unsafe_allow_html=True)
     st.subheader("💡 Une idée ? Un problème ?")
-    st.write("Aidez-nous à améliorer la boîte à livres de Méli-Mélo !")
-    with st.expander("🛠️ Signaler un bug ou faire une suggestion"):
+    with st.expander("🛠️ Signaler un bug ou faire une suggestion", expanded=True):
         msg_bug = st.text_area("Votre message", placeholder="Expliquez-nous tout ici...")
         type_msg = st.selectbox("Type de message", ["Suggestion d'adaptation", "Signalement de bug"])
-        
         c_mail, c_wa = st.columns(2)
         with c_mail:
-            sujet = f"La boîte à livres de Meli-Melo - {type_msg}"
+            sujet = f"Meli-Melo - {type_msg}"
             corps = f"Bonjour Didier,\n\nMessage de {utilisateur} :\n{msg_bug}"
-            st.link_button("📧 Envoyer par Mail", generer_lien_mail(sujet, corps))
+            st.link_button("📧 Envoyer Mail", generer_lien_mail(sujet, corps))
         with c_wa:
             wa_text = f"*Méli-Mélo Support*\nDe: {utilisateur}\nType: {type_msg}\nMessage: {msg_bug}"
-            st.link_button("📱 Envoyer par WhatsApp", envoyer_whatsapp(wa_text))
+            st.link_button("📱 WhatsApp", envoyer_whatsapp(wa_text))
 
 # --- 4. AJOUTER ---
 with onglets[3]:
@@ -279,65 +280,17 @@ if utilisateur in ["Didier", "Amélie"]:
 # --- 6. MODE D'EMPLOI DÉTAILLÉ ---
 with onglets[-1]:
     st.title("📖 Mode d'emploi Méli-Mélo")
-    
     with st.expander("📱 1. Installation de l'application", expanded=True):
-        st.markdown("""
-        **Pourquoi l'installer ?** Pour l'ouvrir comme une vraie application sur votre téléphone, sans passer par votre navigateur.
-        
-        * **Sur iPhone (Safari)** : Appuyez sur l'icône de **Partage** (le carré avec une flèche vers le haut), faites défiler le menu et sélectionnez **« Sur l'écran d'accueil »**.
-        * **Sur Android (Chrome)** : Appuyez sur les **3 petits points** en haut à droite et sélectionnez **« Installer l'application »**.
-        """)
-
+        st.markdown("""* **Sur iPhone (Safari)** : Icône Partage -> **« Sur l'écran d'accueil »**.\n* **Sur Android (Chrome)** : 3 petits points -> **« Installer l'application »**.""")
     with st.expander("🔐 2. Connexion sécurisée"):
-        st.markdown("""
-        Pour protéger vos données, l'accès est personnel :
-        1.  Sélectionnez votre **Prénom** dans la liste déroulante.
-        2.  Entrez votre **Code Secret** (4 caractères minimum).
-        * *Si vous n'avez pas de code, demandez-le à Didier ou Amélie.*
-        * *En cas de déconnexion ou de rafraîchissement de la page, le code vous sera redemandé pour confirmer votre identité.*
-        """)
-
+        st.markdown("""1. Sélectionnez votre **Prénom**.\n2. Entrez votre **Code Secret** personnel.\n*Si vous n'avez pas de code, demandez-le à Didier ou Amélie.*""")
     with st.expander("🔍 3. Explorer la Bibliothèque"):
-        st.markdown("""
-        L'onglet **Bibliothèque** affiche tous les livres partagés par les membres.
-        
-        * **Barre de Recherche** : Vous pouvez filtrer par **Titre**, par **Auteur** ou par **Catégorie** (Roman, BD, Cuisine...).
-        * **Tri** : Vous pouvez afficher les livres les mieux notés ou uniquement ceux qui sont **disponibles (📗 Verts)**.
-        * **Légende des couleurs** :
-            * 📗 **Vert** : Libre. Vous pouvez le demander immédiatement.
-            * ⏳ **Orange** : Demandé. Quelqu'un a déjà posé une option dessus.
-            * 📕 **Rouge** : Prêté. Le livre est actuellement chez un membre.
-        """)
-
+        st.markdown("""* **Recherche** : Filtrez par Titre, Auteur ou Catégorie.\n* **Filtre "Disponible"** : Affichez uniquement les livres prêts à être empruntés (📗).\n* **Légende** : 📗 Libre / ⏳ Demandé / 📕 Prêté.""")
     with st.expander("🤝 4. Emprunter et Prêter un livre"):
-        st.markdown("""
-        Le système repose sur la confiance et la communication via WhatsApp :
-        
-        **Côté Emprunteur :**
-        1.  Trouvez un livre qui vous plaît (📗).
-        2.  Cliquez sur le bouton **« Demander »**. Le livre passera en ⏳.
-        
-        **Côté Propriétaire :**
-        1.  Vous recevrez une alerte orange en haut de votre écran.
-        2.  Allez dans l'onglet **🤝 Demandes** pour **✅ Valider** le prêt.
-        3.  Un bouton **WhatsApp** apparaîtra : cliquez dessus pour envoyer un message automatique à l'emprunteur et fixer le rendez-vous pour l'échange !
-        """)
-
+        st.markdown("""**Emprunteur** : Cliquez sur « Demander ».\n**Propriétaire** : Validez dans l'onglet **🤝 Demandes**. Utilisez le bouton **WhatsApp** pour fixer le RDV !\n**Retour** : Cliquez sur **🔄 Rendu** dans votre profil pour libérer le livre.""")
     with st.expander("💬 5. Donner son avis et Noter"):
-        st.markdown("""
-        Partagez vos lectures pour guider les autres membres :
-        1.  Sous chaque livre dans la Bibliothèque, vous trouverez une section **💬 Avis/Note**.
-        2.  Attribuez une note (de 1 à 4 livres 📚) et rédigez un petit commentaire.
-        3.  Vos avis sont visibles par tous les membres en cliquant sur **« Voir les avis »**.
-        """)
-
-    with st.expander("👤 6. Gérer son Profil et sa Collection"):
-        st.markdown("""
-        L'onglet **Mon Profil** est votre centre de gestion :
-        * **Navigation Rapide** : Utilisez les boutons en haut pour sauter directement à vos prêts, vos emprunts ou votre collection.
-        * **Recherche Globale** : Retrouvez un livre précis dans votre historique (cherchez par titre ou par auteur).
-        * **Rendre un livre** : Dès que vous récupérez un livre que vous aviez prêté, cliquez sur le bouton **🔄 Rendu**. Le livre redeviendra disponible (📗) pour tout le club.
-        * **Support** : Si vous rencontrez un souci, utilisez le formulaire en bas de votre profil pour nous contacter !
-        """)
+        st.markdown("""Partagez vos impressions via le bouton **💬 Avis/Note**. Vos notes aident tout le club à choisir ses lectures !""")
+    with st.expander("👤 6. Mon Profil & Support"):
+        st.markdown("""Utilisez les boutons de navigation rapide pour gérer vos prêts et votre collection. Si vous avez une idée ou un problème, utilisez le bouton **🛠️ Support** pour nous contacter !""")
 
 st.caption("Une création DJA’WEB avec l’aide de Gemini IA")
