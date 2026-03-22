@@ -62,6 +62,7 @@ def generer_lien_mail(sujet, corps):
 # --- CONNEXION ---
 if not st.session_state.connecte:
     st.title("🔐 Accès Méli-Mélo")
+    st.write("Bienvenue ! Veuillez vous identifier pour entrer.")
     noms_disponibles = sorted(df_membres['Prénom'].unique().tolist())
     nom_choisi = st.selectbox("Qui êtes-vous ?", noms_disponibles)
     code_saisi = st.text_input("Code Secret", type="password")
@@ -77,7 +78,16 @@ if not st.session_state.connecte:
 
 # --- INTERFACE ---
 utilisateur = st.session_state.user
-st.title(" La boîte à livres à Méli-Mélo ")
+
+# TENSION TITRE & ICÔNE
+c1, c2 = st.columns([1, 4])
+with c1:
+    # --- ICI LE BLOC À INSÉRER ---
+    # Nous utilisons l'URL "Gist" de GitHub pour une meilleure stabilité d'affichage
+    image_url = "https://raw.githubusercontent.com/didierjaccoud144-bit/BiblioClub/main/image_3.png"
+    st.image(image_url, width=100, use_container_width=False)
+with c2:
+    st.title(" La boîte à livres à Méli-Mélo ")
 
 c_info, c_refresh, c_logout = st.columns([2, 1, 1])
 with c_info: st.write(f"👤 Membre : **{utilisateur}**")
@@ -154,23 +164,22 @@ with onglets[1]:
         for idx, r in df_dem_filtered.iterrows():
             emp = r[COL["Emprunteur"]]
             st.info(f"👉 **{emp}** attend : **{r[COL['Titre']]}**")
-            c1, c2 = st.columns(2)
-            with c1:
+            cl1, cl2 = st.columns(2)
+            with cl1:
                 if st.button(f"✅ Valider", key=f"v_{idx}"):
                     oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
                     sheet_livres.update_cell(oidx, 5, "Emprunté")
                     st.success("Validé !"); st.link_button("📱 WhatsApp", envoyer_whatsapp(f"C'est OK pour '{r[COL['Titre']]}'. On s'organise ?"))
-            with c2:
+            with cl2:
                 if st.button(f"❌ Décliner", key=f"d_{idx}"):
                     oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
                     sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, ""); refresh()
     else: st.write("Aucune nouvelle demande.")
 
-# --- 3. PROFIL (4 BOUTONS) ---
+# --- 3. PROFIL (AVEC SUPPORT & ICÔNE) ---
 with onglets[2]:
     st.write(f"## 👤 Profil de {utilisateur}")
     
-    # Navigation Rapide (4 boutons)
     st.markdown("""<div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px;">
             <a href="#prets" style="text-decoration: none; background-color: #f0f2f6; color: #31333F; padding: 5px 12px; border-radius: 5px; border: 1px solid #dcdcdc; font-size: 13px;">📤 Prêts</a>
             <a href="#emprunts" style="text-decoration: none; background-color: #f0f2f6; color: #31333F; padding: 5px 12px; border-radius: 5px; border: 1px solid #dcdcdc; font-size: 13px;">📥 Emprunts</a>
@@ -192,15 +201,15 @@ with onglets[2]:
         for idx, rs in mes_sorties.iterrows():
             stat_txt = "⏳ Attente" if rs[COL["Statut"]] == "Demandé" else "📕 Prêté"
             with st.container():
-                c1, c2, c3 = st.columns([3, 1.5, 1])
-                c1.write(f"**{rs[COL['Titre']]}**\n({rs[COL['Auteur']]}) - Emprunté par : {rs[COL['Emprunteur']]}")
-                c2.write(stat_txt)
-                with c3:
+                cc1, cc2, cc3 = st.columns([3, 1.5, 1])
+                cc1.write(f"**{rs[COL['Titre']]}**\n({rs[COL['Auteur']]}) - Emprunté par : {rs[COL['Emprunteur']]}")
+                cc2.write(stat_txt)
+                with cc3:
                     if st.button("🔄 Rendu", key=f"rendu_{idx}"):
                         oidx = int(df_livres.index[df_livres[COL['Titre']] == rs[COL['Titre']]][0] + 2)
                         sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, ""); refresh()
                 st.markdown("---")
-    else: st.info("Aucun résultat dans vos prêts.")
+    else: st.info("Aucun prêt actif correspondant.")
 
     st.write("---")
     
@@ -216,7 +225,7 @@ with onglets[2]:
         recap_e = mes_emprunts[[COL["Titre"], COL["Auteur"], COL["Proprio"], COL["Statut"]]].copy()
         recap_e[COL["Statut"]] = recap_e[COL["Statut"]].replace({"Demandé": "⏳ En attente", "Emprunté": "🏠 Chez moi"})
         st.table(recap_e)
-    else: st.info("Aucun résultat dans vos emprunts.")
+    else: st.info("Aucun emprunt correspondant.")
     
     st.write("---")
     
@@ -232,7 +241,7 @@ with onglets[2]:
             with st.expander(f"📙 {r[COL['Titre']]} - {r[COL['Auteur']]} ({r[COL['Statut']]})"):
                 if st.button("❌ Supprimer définitivement", key=f"del_{idx}"):
                     oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2); sheet_livres.delete_rows(oidx); refresh()
-    else: st.info("Aucun livre correspondant.")
+    else: st.info("Aucun livre correspondant dans votre collection.")
 
     st.write("---")
     # SECTION SUPPORT (ANCRE)
@@ -264,7 +273,7 @@ with onglets[3]:
         st.markdown("1. Modèle / 2. Remplir / 3. Envoyer")
         st.link_button("📥 Modèle Excel", "https://raw.githubusercontent.com/didierjaccoud144-bit/BiblioClub/main/BiblioMod.xlsx")
         up = st.file_uploader("Fichier Excel", type="xlsx")
-        if up and st.button("Lancer"):
+        if up and st.button("Lancer l'import"):
             df_i = pd.read_excel(up).fillna("")
             lignes = [[str(ri['Titre']), str(ri.get('Auteur','')), utilisateur, str(ri.get('Avis','')), "Libre", "", str(ri.get('Note','📚📚')), datetime.now().strftime("%Y-%m-%d"), "", str(ri.get('Catégorie', 'Autre'))] for _, ri in df_i.iterrows()]
             sheet_livres.append_rows(lignes); refresh()
