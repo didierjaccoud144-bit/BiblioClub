@@ -132,11 +132,10 @@ with onglets[1]:
                 sh_l.update_cell(real_idx, 5, "Emprunté"); refresh()
     else: st.write("Aucune demande.")
 
-# --- 3. PROFIL (RESTAURÉ) ---
+# --- 3. PROFIL COMPLET (RECHERCHE + PRÊTS + EMPRUNTS + MODIF) ---
 with onglets[2]:
     st.write(f"## 👤 Profil de {utilisateur}")
     
-    # Navigation Rapide
     st.markdown("""<div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px;">
             <a href="#prets" style="text-decoration: none; background-color: #f0f2f6; color: #31333F; padding: 5px 12px; border-radius: 5px; border: 1px solid #dcdcdc; font-size: 13px;">📤 Prêts</a>
             <a href="#emprunts" style="text-decoration: none; background-color: #f0f2f6; color: #31333F; padding: 5px 12px; border-radius: 5px; border: 1px solid #dcdcdc; font-size: 13px;">📥 Emprunts</a>
@@ -146,66 +145,44 @@ with onglets[2]:
 
     s_p = st.text_input("🔍 Rechercher par titre, auteur ou membre...", "").lower()
 
-    # SECTION PRÊTS (RESTORED)
     st.markdown('<div id="prets"></div>', unsafe_allow_html=True)
     st.write("### 📤 Mes livres prêtés")
     mes_p = df_livres[(df_livres[COL["Proprio"]] == utilisateur) & (df_livres[COL["Statut"]] != "Libre")]
-    if s_p:
-        mes_p = mes_p[mes_p[COL["Titre"]].astype(str).str.lower().str.contains(s_p) | 
-                      mes_p[COL["Auteur"]].astype(str).str.lower().str.contains(s_p) |
-                      mes_p[COL["Emprunteur"]].astype(str).str.lower().str.contains(s_p)]
-    
-    if not mes_p.empty:
-        for idx, r_p in mes_p.iterrows():
-            c1, c2, c3 = st.columns([3, 1.5, 1])
-            c1.write(f"**{r_p[COL['Titre']]}** ({r_p[COL['Emprunteur']]})")
-            c2.write(f"{r_p[COL['Statut']]}")
-            with c3:
-                if st.button("🔄 Rendu", key=f"rendu_{idx}"):
-                    sh_l, _ = get_sheets(); real_idx = int(df_livres.index[df_livres[COL['Titre']] == r_p[COL['Titre']]][0] + 2)
-                    sh_l.update_cell(real_idx, 5, "Libre"); sh_l.update_cell(real_idx, 6, ""); refresh()
-    else: st.info("Aucun prêt correspondant.")
+    if s_p: mes_p = mes_p[mes_p[COL["Titre"]].astype(str).str.lower().str.contains(s_p) | mes_p[COL["Auteur"]].astype(str).str.lower().str.contains(s_p) | mes_p[COL["Emprunteur"]].astype(str).str.lower().str.contains(s_p)]
+    for idx, r_p in mes_p.iterrows():
+        c1, c2, c3 = st.columns([3, 1.5, 1])
+        c1.write(f"**{r_p[COL['Titre']]}** ({r_p[COL['Emprunteur']]})")
+        c2.write(f"{r_p[COL['Statut']]}")
+        with c3:
+            if st.button("🔄 Rendu", key=f"rendu_{idx}"):
+                sh_l, _ = get_sheets(); real_idx = int(df_livres.index[df_livres[COL['Titre']] == r_p[COL['Titre']]][0] + 2)
+                sh_l.update_cell(real_idx, 5, "Libre"); sh_l.update_cell(real_idx, 6, ""); refresh()
 
-    # SECTION EMPRUNTS (RESTORED)
     st.markdown('<div id="emprunts"></div>', unsafe_allow_html=True)
     st.write("### 📥 Mes emprunts")
     mes_e = df_livres[(df_livres[COL["Emprunteur"]] == utilisateur) & (df_livres[COL["Statut"]] != "Libre")]
-    if s_p:
-        mes_e = mes_e[mes_e[COL["Titre"]].astype(str).str.lower().str.contains(s_p) | 
-                      mes_e[COL["Proprio"]].astype(str).str.lower().str.contains(s_p)]
-    if not mes_e.empty: 
-        st.table(mes_e[[COL["Titre"], COL["Auteur"], COL["Proprio"]]])
-    else: st.info("Aucun emprunt correspondant.")
+    if s_p: mes_e = mes_e[mes_e[COL["Titre"]].astype(str).str.lower().str.contains(s_p) | mes_e[COL["Proprio"]].astype(str).str.lower().str.contains(s_p)]
+    if not mes_e.empty: st.table(mes_e[[COL["Titre"], COL["Auteur"], COL["Proprio"]]])
 
-    # SECTION COLLECTION (WITH EDIT)
     st.markdown('<div id="collection"></div>', unsafe_allow_html=True)
     st.write("### 📚 Ma collection (Modifier / Supprimer)")
     mes_c = df_livres[df_livres[COL["Proprio"]] == utilisateur]
-    if s_p:
-        mes_c = mes_c[mes_c[COL["Titre"]].astype(str).str.lower().str.contains(s_p) | 
-                      mes_c[COL["Auteur"]].astype(str).str.lower().str.contains(s_p)]
-    
+    if s_p: mes_c = mes_c[mes_c[COL["Titre"]].astype(str).str.lower().str.contains(s_p) | mes_c[COL["Auteur"]].astype(str).str.lower().str.contains(s_p)]
     for idx, r in mes_c.iterrows():
         with st.expander(f"📙 {r[COL['Titre']]} - {r[COL['Auteur']]}"):
             with st.form(f"edit_{idx}"):
-                new_t = st.text_input("Titre", value=r[COL['Titre']])
-                new_a = st.text_input("Auteur", value=r[COL['Auteur']])
-                new_cat = st.selectbox("Catégorie", LISTE_CATS, index=LISTE_CATS.index(r[COL['Cat']]) if r[COL['Cat']] in LISTE_CATS else 0)
-                new_note = st.select_slider("Note", options=LISTE_NOTES, value=r[COL['Note']] if r[COL['Note']] in LISTE_NOTES else "❌")
-                new_avis = st.text_area("Mon avis", value=r[COL['Avis']])
-                
-                c_edit, c_del = st.columns(2)
-                if c_edit.form_submit_button("💾 Enregistrer"):
+                nt = st.text_input("Titre", value=r[COL['Titre']]); na = st.text_input("Auteur", value=r[COL['Auteur']])
+                ncat = st.selectbox("Catégorie", LISTE_CATS, index=LISTE_CATS.index(r[COL['Cat']]) if r[COL['Cat']] in LISTE_CATS else 0)
+                nn = st.select_slider("Note", options=LISTE_NOTES, value=r[COL['Note']] if r[COL['Note']] in LISTE_NOTES else "❌")
+                navis = st.text_area("Mon avis", value=r[COL['Avis']])
+                c_e, c_d = st.columns(2)
+                if c_e.form_submit_button("💾 Enregistrer"):
                     sh_l, _ = get_sheets(); real_idx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
-                    sh_l.update_cell(real_idx, 1, new_t); sh_l.update_cell(real_idx, 2, new_a)
-                    sh_l.update_cell(real_idx, 4, new_avis); sh_l.update_cell(real_idx, 7, new_note)
-                    sh_l.update_cell(real_idx, 10, new_cat); refresh()
-                
-                if c_del.form_submit_button("❌ Supprimer"):
+                    sh_l.update_cell(real_idx, 1, nt); sh_l.update_cell(real_idx, 2, na); sh_l.update_cell(real_idx, 4, navis); sh_l.update_cell(real_idx, 7, nn); sh_l.update_cell(real_idx, 10, ncat); refresh()
+                if c_d.form_submit_button("❌ Supprimer"):
                     sh_l, _ = get_sheets(); real_idx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
                     sh_l.delete_rows(real_idx); refresh()
 
-    # SECTION SUPPORT
     st.markdown('<div id="support"></div>', unsafe_allow_html=True)
     st.subheader("🛠️ Support")
     msg_s = st.text_area("Bug ou Suggestion ?")
@@ -225,7 +202,7 @@ with onglets[3]:
                 st.success("Ajouté !"); st.balloons()
             else: st.warning("Titre et Auteur requis.")
 
-# --- 5/6 GÉRANCE & AIDE ---
+# --- 5. GÉRANCE ---
 with onglets[4]:
     if utilisateur in ["Didier", "Amélie"]:
         with st.form("new_mem"):
@@ -233,13 +210,30 @@ with onglets[4]:
             if st.form_submit_button("Créer"):
                 _, sh_m = get_sheets(); sh_m.append_row([nm, sm, "", "", "", ""]); refresh()
 
+# --- 6. MODE D'EMPLOI DÉTAILLÉ (RESTAURÉ !) ---
 with onglets[5]:
     st.title("📖 Mode d'emploi Méli-Mélo")
     with st.expander("📱 1. Installation", expanded=True):
-        st.markdown("**iPhone** : Safari -> Partage -> « Sur l'écran d'accueil ».\n**Android** : Chrome -> 3 points -> « Installer ».")
+        st.markdown("**iPhone** : Safari -> Partage -> « Sur l'écran d'accueil ».\n**Android** : Chrome -> 3 points -> « Installer l'application ».")
     with st.expander("🔐 2. Connexion"):
-        st.markdown("Identifiez-vous avec votre Prénom et votre Code Secret.")
-    with st.expander("🔍 3. Recherche et Profil"):
-        st.markdown("📗=Libre, ⏳=En attente, 📕=Déjà prêté.")
+        st.markdown("Identifiez-vous avec votre Prénom et votre Code Secret. Demandez à Didier ou Amélie si vous ne l'avez pas.")
+    with st.expander("🔍 3. Exploration & Recherche"):
+        st.markdown("""
+        * Filtrez par Titre, Auteur ou Catégorie.
+        * 📗 **Vert** : Disponible.
+        * ⏳ **Orange** : Déjà demandé, en attente.
+        * 📕 **Rouge** : Prêté à un membre.
+        """)
+    with st.expander("🤝 4. Emprunts & Prêts"):
+        st.markdown("""
+        1. Cliquez sur **Demander**.
+        2. Le proprio valide dans son onglet **Demandes**.
+        3. Contactez-vous via **WhatsApp** pour l'échange physique.
+        4. Une fois rendu, le proprio clique sur **🔄 Rendu** dans son profil.
+        """)
+    with st.expander("💬 5. Avis & Notes"):
+        st.markdown("Donnez une note de 1 à 4 livres 📚 et rédigez un avis pour conseiller les autres membres !")
+    with st.expander("👤 6. Profil & Modification"):
+        st.markdown("Gérez vos livres dans **Mon Profil**. Vous pouvez désormais **Modifier** les infos d'un livre (erreur de frappe, changement d'avis) sans le supprimer.")
 
-st.caption("DJA’WEB avec l’aide de Gemini IA")
+st.caption("Une création DJA’WEB avec l’aide de Gemini IA")
