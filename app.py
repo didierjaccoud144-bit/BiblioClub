@@ -17,29 +17,36 @@ def refresh():
     st.cache_data.clear()
     st.rerun()
 
+# FONCTION DE CONNEXION ROBUSTE
 def get_gspread_client():
-    creds_dict = st.secrets["gcp_service_account"].to_dict()
-    if "private_key" in creds_dict:
-        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    return gspread.authorize(creds)
+    try:
+        creds_dict = st.secrets["gcp_service_account"].to_dict()
+        if "private_key" in creds_dict:
+            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        return gspread.authorize(creds)
+    except Exception as e:
+        st.error(f"Erreur d'authentification Google : {e}")
+        return None
 
 # --- CHARGEMENT ---
 @st.cache_data(ttl=60)
 def load_all_data():
     client = get_gspread_client()
-    spreadsheet = client.open("BiblioClub_Data") 
-    sh_livres = spreadsheet.worksheet("Livres")
-    df_l = pd.DataFrame(sh_livres.get_all_records())
-    sh_membres = spreadsheet.worksheet("Membres")
-    df_m = pd.DataFrame(sh_membres.get_all_records())
-    return df_l, df_m, sh_livres, sh_membres
+    if client:
+        spreadsheet = client.open("BiblioClub_Data") 
+        sh_livres = spreadsheet.worksheet("Livres")
+        df_l = pd.DataFrame(sh_livres.get_all_records())
+        sh_membres = spreadsheet.worksheet("Membres")
+        df_m = pd.DataFrame(sh_membres.get_all_records())
+        return df_l, df_m, sh_livres, sh_membres
+    return None, None, None, None
 
-try:
-    df_livres, df_membres, sheet_livres, sheet_membres = load_all_data()
-except Exception as e:
-    st.error(f"Erreur de connexion : {e}")
+df_livres, df_membres, sheet_livres, sheet_membres = load_all_data()
+
+if df_livres is None:
+    st.error("Impossible de charger les données. Vérifiez la connexion.")
     st.stop()
 
 # --- DEFINITIONS ---
@@ -62,7 +69,6 @@ def generer_lien_mail(sujet, corps):
 # --- CONNEXION ---
 if not st.session_state.connecte:
     st.title("🔐 Accès Méli-Mélo")
-    st.write("Bienvenue ! Veuillez vous identifier pour entrer.")
     noms_disponibles = sorted(df_membres['Prénom'].unique().tolist())
     nom_choisi = st.selectbox("Qui êtes-vous ?", noms_disponibles)
     code_saisi = st.text_input("Code Secret", type="password")
@@ -79,13 +85,11 @@ if not st.session_state.connecte:
 # --- INTERFACE ---
 utilisateur = st.session_state.user
 
-# TENSION TITRE & ICÔNE
+# TITRE & ICONE
 c1, c2 = st.columns([1, 4])
 with c1:
-    # --- ICI LE BLOC À INSÉRER ---
-    # Nous utilisons l'URL "Gist" de GitHub pour une meilleure stabilité d'affichage
     image_url = "https://raw.githubusercontent.com/didierjaccoud144-bit/BiblioClub/main/image_3.png"
-    st.image(image_url, width=100, use_container_width=False)
+    st.image(image_url, width=100)
 with c2:
     st.title(" La boîte à livres à Méli-Mélo ")
 
@@ -110,7 +114,7 @@ onglets = st.tabs(onglets_noms)
 
 # --- 1. BIBLIOTHÈQUE ---
 with onglets[0]:
-    recherche_bib = st.text_input("🔍 Rechercher (Titre, Auteur, Catégorie)...", "").lower()
+    recherche_bib = st.text_input("🔍 Rechercher...", "").lower()
     tri = st.selectbox("Trier par", ["Derniers ajouts", "Note", "Titre (A-Z)", "📗 Disponible uniquement"])
     df_tri = df_livres.copy()
     if tri == "📗 Disponible uniquement": df_tri = df_tri[df_tri[COL["Statut"]] == "Libre"]
@@ -164,22 +168,21 @@ with onglets[1]:
         for idx, r in df_dem_filtered.iterrows():
             emp = r[COL["Emprunteur"]]
             st.info(f"👉 **{emp}** attend : **{r[COL['Titre']]}**")
-            cl1, cl2 = st.columns(2)
-            with cl1:
+            c1, c2 = st.columns(2)
+            with c1:
                 if st.button(f"✅ Valider", key=f"v_{idx}"):
                     oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
                     sheet_livres.update_cell(oidx, 5, "Emprunté")
                     st.success("Validé !"); st.link_button("📱 WhatsApp", envoyer_whatsapp(f"C'est OK pour '{r[COL['Titre']]}'. On s'organise ?"))
-            with cl2:
+            with c2:
                 if st.button(f"❌ Décliner", key=f"d_{idx}"):
                     oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
                     sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, ""); refresh()
     else: st.write("Aucune nouvelle demande.")
 
-# --- 3. PROFIL (AVEC SUPPORT & ICÔNE) ---
+# --- 3. PROFIL ---
 with onglets[2]:
     st.write(f"## 👤 Profil de {utilisateur}")
-    
     st.markdown("""<div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px;">
             <a href="#prets" style="text-decoration: none; background-color: #f0f2f6; color: #31333F; padding: 5px 12px; border-radius: 5px; border: 1px solid #dcdcdc; font-size: 13px;">📤 Prêts</a>
             <a href="#emprunts" style="text-decoration: none; background-color: #f0f2f6; color: #31333F; padding: 5px 12px; border-radius: 5px; border: 1px solid #dcdcdc; font-size: 13px;">📥 Emprunts</a>
@@ -187,9 +190,8 @@ with onglets[2]:
             <a href="#support" style="text-decoration: none; background-color: #f0f2f6; color: #31333F; padding: 5px 12px; border-radius: 5px; border: 1px solid #dcdcdc; font-size: 13px;">🛠️ Support</a>
         </div>""", unsafe_allow_html=True)
 
-    search_prof = st.text_input("🔍 Rechercher par titre, auteur ou membre...", "").lower()
+    search_prof = st.text_input("🔍 Rechercher dans mon historique...", "").lower()
 
-    # SECTION PRÊTS
     st.markdown('<div id="prets"></div>', unsafe_allow_html=True)
     st.write("### 📤 Mes livres en voyage (Prêts)")
     mes_sorties = df_livres[(df_livres[COL["Proprio"]] == utilisateur) & (df_livres[COL["Statut"]] != "Libre")]
@@ -209,11 +211,9 @@ with onglets[2]:
                         oidx = int(df_livres.index[df_livres[COL['Titre']] == rs[COL['Titre']]][0] + 2)
                         sheet_livres.update_cell(oidx, 5, "Libre"); sheet_livres.update_cell(oidx, 6, ""); refresh()
                 st.markdown("---")
-    else: st.info("Aucun prêt actif correspondant.")
+    else: st.info("Aucun résultat.")
 
     st.write("---")
-    
-    # SECTION EMPRUNTS
     st.markdown('<div id="emprunts"></div>', unsafe_allow_html=True)
     st.write("### 📥 Livres que j'ai empruntés")
     mes_emprunts = df_livres[(df_livres[COL["Emprunteur"]] == utilisateur) & (df_livres[COL["Statut"]] != "Libre")]
@@ -225,11 +225,8 @@ with onglets[2]:
         recap_e = mes_emprunts[[COL["Titre"], COL["Auteur"], COL["Proprio"], COL["Statut"]]].copy()
         recap_e[COL["Statut"]] = recap_e[COL["Statut"]].replace({"Demandé": "⏳ En attente", "Emprunté": "🏠 Chez moi"})
         st.table(recap_e)
-    else: st.info("Aucun emprunt correspondant.")
     
     st.write("---")
-    
-    # SECTION COLLECTION
     st.markdown('<div id="collection"></div>', unsafe_allow_html=True)
     st.write("### 📚 Ma collection complète")
     mes_l = df_livres[df_livres[COL["Proprio"]] == utilisateur]
@@ -241,23 +238,17 @@ with onglets[2]:
             with st.expander(f"📙 {r[COL['Titre']]} - {r[COL['Auteur']]} ({r[COL['Statut']]})"):
                 if st.button("❌ Supprimer définitivement", key=f"del_{idx}"):
                     oidx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2); sheet_livres.delete_rows(oidx); refresh()
-    else: st.info("Aucun livre correspondant dans votre collection.")
 
     st.write("---")
-    # SECTION SUPPORT (ANCRE)
-    st.markdown('<div id="support"></div>', unsafe_allow_html=True)
     st.subheader("💡 Une idée ? Un problème ?")
-    with st.expander("🛠️ Signaler un bug ou faire une suggestion", expanded=True):
-        msg_bug = st.text_area("Votre message", placeholder="Expliquez-nous tout ici...")
-        type_msg = st.selectbox("Type de message", ["Suggestion d'adaptation", "Signalement de bug"])
-        c_mail, c_wa = st.columns(2)
-        with c_mail:
-            sujet = f"Meli-Melo - {type_msg}"
-            corps = f"Bonjour Didier,\n\nMessage de {utilisateur} :\n{msg_bug}"
-            st.link_button("📧 Envoyer Mail", generer_lien_mail(sujet, corps))
-        with c_wa:
-            wa_text = f"*Méli-Mélo Support*\nDe: {utilisateur}\nType: {type_msg}\nMessage: {msg_bug}"
-            st.link_button("📱 WhatsApp", envoyer_whatsapp(wa_text))
+    with st.expander("🛠️ Signaler un bug ou faire une suggestion"):
+        msg_bug = st.text_area("Votre message")
+        type_msg = st.selectbox("Type", ["Suggestion", "Bug"])
+        c_m, c_w = st.columns(2)
+        with c_m:
+            st.link_button("📧 Mail", generer_lien_mail(f"Meli-Melo - {type_msg}", f"Message de {utilisateur}:\n{msg_bug}"))
+        with c_w:
+            st.link_button("📱 WhatsApp", envoyer_whatsapp(f"*Méli-Mélo Support*\n{utilisateur}: {msg_bug}"))
 
 # --- 4. AJOUTER ---
 with onglets[3]:
@@ -268,12 +259,17 @@ with onglets[3]:
             cat = st.selectbox("Catégorie", LISTE_CATS)
             n, c = st.select_slider("Note", ["📚","📚📚","📚📚📚","📚📚📚📚"]), st.text_area("Avis")
             if st.form_submit_button("Ajouter"):
-                sheet_livres.append_row([t, a, utilisateur, c, "Libre", "", n, datetime.now().strftime("%Y-%m-%d"), "", cat]); refresh()
+                # SÉCURITÉ : On vérifie la connexion JUSTE AVANT l'ajout
+                try:
+                    sheet_livres.append_row([t, a, utilisateur, c, "Libre", "", n, datetime.now().strftime("%Y-%m-%d"), "", cat])
+                    refresh()
+                except Exception:
+                    st.error("Session expirée. Reconnexion en cours...")
+                    refresh()
     else:
-        st.markdown("1. Modèle / 2. Remplir / 3. Envoyer")
         st.link_button("📥 Modèle Excel", "https://raw.githubusercontent.com/didierjaccoud144-bit/BiblioClub/main/BiblioMod.xlsx")
         up = st.file_uploader("Fichier Excel", type="xlsx")
-        if up and st.button("Lancer l'import"):
+        if up and st.button("Lancer"):
             df_i = pd.read_excel(up).fillna("")
             lignes = [[str(ri['Titre']), str(ri.get('Auteur','')), utilisateur, str(ri.get('Avis','')), "Libre", "", str(ri.get('Note','📚📚')), datetime.now().strftime("%Y-%m-%d"), "", str(ri.get('Catégorie', 'Autre'))] for _, ri in df_i.iterrows()]
             sheet_livres.append_rows(lignes); refresh()
@@ -286,20 +282,20 @@ if utilisateur in ["Didier", "Amélie"]:
             n, s, t, p, r = st.text_input("Prénom"), st.text_input("Code Secret"), st.text_input("Tél"), st.text_input("Lieu"), st.text_input("Retrait")
             if st.form_submit_button("Créer"): sheet_membres.append_row([n, s, t, "", p, r]); refresh()
 
-# --- 6. MODE D'EMPLOI DÉTAILLÉ ---
+# --- 6. MODE D'EMPLOI ---
 with onglets[-1]:
     st.title("📖 Mode d'emploi Méli-Mélo")
-    with st.expander("📱 1. Installation de l'application", expanded=True):
-        st.markdown("""* **Sur iPhone (Safari)** : Icône Partage -> **« Sur l'écran d'accueil »**.\n* **Sur Android (Chrome)** : 3 petits points -> **« Installer l'application »**.""")
-    with st.expander("🔐 2. Connexion sécurisée"):
-        st.markdown("""1. Sélectionnez votre **Prénom**.\n2. Entrez votre **Code Secret** personnel.\n*Si vous n'avez pas de code, demandez-le à Didier ou Amélie.*""")
-    with st.expander("🔍 3. Explorer la Bibliothèque"):
-        st.markdown("""* **Recherche** : Filtrez par Titre, Auteur ou Catégorie.\n* **Filtre "Disponible"** : Affichez uniquement les livres prêts à être empruntés (📗).\n* **Légende** : 📗 Libre / ⏳ Demandé / 📕 Prêté.""")
-    with st.expander("🤝 4. Emprunter et Prêter un livre"):
-        st.markdown("""**Emprunteur** : Cliquez sur « Demander ».\n**Propriétaire** : Validez dans l'onglet **🤝 Demandes**. Utilisez le bouton **WhatsApp** pour fixer le RDV !\n**Retour** : Cliquez sur **🔄 Rendu** dans votre profil pour libérer le livre.""")
-    with st.expander("💬 5. Donner son avis et Noter"):
-        st.markdown("""Partagez vos impressions via le bouton **💬 Avis/Note**. Vos notes aident tout le club à choisir ses lectures !""")
-    with st.expander("👤 6. Mon Profil & Support"):
-        st.markdown("""Utilisez les boutons de navigation rapide pour gérer vos prêts et votre collection. Si vous avez une idée ou un problème, utilisez le bouton **🛠️ Support** pour nous contacter !""")
+    with st.expander("📱 1. Installation", expanded=True):
+        st.markdown("* **iPhone (Safari)** : Partage -> « Sur l'écran d'accueil ».\n* **Android (Chrome)** : 3 points -> « Installer l'application ».")
+    with st.expander("🔐 2. Connexion"):
+        st.markdown("Choisissez votre prénom et entrez votre code secret.")
+    with st.expander("🔍 3. Recherche"):
+        st.markdown("Filtrez par Titre, Auteur ou Catégorie.")
+    with st.expander("🤝 4. Emprunter / Prêter"):
+        st.markdown("Demande -> Validation -> WhatsApp. Une fois rendu, cliquez sur **🔄 Rendu**.")
+    with st.expander("💬 5. Avis"):
+        st.markdown("Notez vos lectures sous chaque livre.")
+    with st.expander("👤 6. Profil & Support"):
+        st.markdown("Gérez vos livres et utilisez le bouton **🛠️ Support** pour nous contacter.")
 
 st.caption("Une création DJA’WEB avec l’aide de Gemini IA")
