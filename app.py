@@ -35,8 +35,8 @@ def load_data():
 
 try:
     df_livres, df_membres = load_data()
-except Exception as e:
-    st.error(f"Connexion interrompue. Cliquez sur Actualiser.")
+except Exception:
+    st.error("Connexion interrompue. Cliquez sur Actualiser.")
     st.stop()
 
 # --- DEFINITIONS ---
@@ -89,31 +89,24 @@ onglets = st.tabs(["📖 Bibliothèque", f"🤝 Demandes ({nb_demandes})", "👤
 
 # --- 1. BIBLIOTHÈQUE ---
 with onglets[0]:
-    rech = st.text_input("🔍 Rechercher...", "").lower()
+    rech = st.text_input("🔍 Rechercher dans le club...", "").lower()
     df_f = df_livres.copy()
     if rech:
         df_f = df_f[df_f[COL["Titre"]].astype(str).str.lower().str.contains(rech) | 
                     df_f[COL["Auteur"]].astype(str).str.lower().str.contains(rech) |
                     df_f[COL["Cat"]].astype(str).str.lower().str.contains(rech)]
     
-    df_f = df_f.iloc[::-1] # Derniers ajouts en haut
-
-    for idx, r in df_f.iterrows():
+    for idx, r in df_f.iloc[::-1].iterrows():
         statut = str(r[COL["Statut"]])
         emoji, color = ("📗", "green") if statut == "Libre" else (("⏳", "orange") if statut == "Demandé" else ("📕", "red"))
-        
         with st.container():
             st.markdown(f"#### {emoji} {r[COL['Titre']]} {r[COL['Note']]}")
             st.markdown(f"*{r[COL['Auteur']]}* | Proprio : **{r[COL['Proprio']]}** | :{color}[**({statut})**]")
-            col_a, col_b = st.columns([1.5, 3])
-            with col_a:
-                if statut == "Libre" and r[COL['Proprio']] != utilisateur:
-                    if st.button("Demander", key=f"req_{idx}"):
-                        sh_l, _ = get_sheets()
-                        real_idx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
-                        sh_l.update_cell(real_idx, 5, "Demandé"); sh_l.update_cell(real_idx, 6, utilisateur); refresh()
-            with col_b:
-                if r[COL['Avis']]: st.caption(f"⭐ **Proprio :** {r[COL['Avis']]}")
+            if statut == "Libre" and r[COL['Proprio']] != utilisateur:
+                if st.button("Demander", key=f"req_{idx}"):
+                    sh_l, _ = get_sheets()
+                    real_idx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
+                    sh_l.update_cell(real_idx, 5, "Demandé"); sh_l.update_cell(real_idx, 6, utilisateur); refresh()
             st.markdown("---")
 
 # --- 2. DEMANDES ---
@@ -125,10 +118,10 @@ with onglets[1]:
             if st.button("✅ Valider le prêt", key=f"v_{idx}"):
                 sh_l, _ = get_sheets()
                 real_idx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
-                sh_l.update_cell(real_idx, 5, "Emprunté"); st.success("Validé !"); st.link_button("📱 WhatsApp", envoyer_whatsapp(f"C'est OK pour '{r[COL['Titre']]}'. On s'organise ?"))
+                sh_l.update_cell(real_idx, 5, "Emprunté"); refresh()
     else: st.write("Aucune demande.")
 
-# --- 3. PROFIL ---
+# --- 3. PROFIL (AVEC RECHERCHE RÉTABLIE) ---
 with onglets[2]:
     st.write(f"## 👤 Profil de {utilisateur}")
     st.markdown("""<div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px;">
@@ -138,36 +131,42 @@ with onglets[2]:
             <a href="#support" style="text-decoration: none; background-color: #f0f2f6; color: #31333F; padding: 5px 12px; border-radius: 5px; border: 1px solid #dcdcdc; font-size: 13px;">🛠️ Support</a>
         </div>""", unsafe_allow_html=True)
 
+    # BARRE DE RECHERCHE PROFIL
+    search_prof = st.text_input("🔍 Rechercher dans mon historique (titre, auteur, membre)...", "").lower()
+
     st.markdown('<div id="prets"></div>', unsafe_allow_html=True)
     st.write("### 📤 Mes livres prêtés")
     mes_p = df_livres[(df_livres[COL["Proprio"]] == utilisateur) & (df_livres[COL["Statut"]] != "Libre")]
+    if search_prof:
+        mes_p = mes_p[mes_p[COL["Titre"]].astype(str).str.lower().str.contains(search_prof) | 
+                      mes_p[COL["Auteur"]].astype(str).str.lower().str.contains(search_prof) |
+                      mes_p[COL["Emprunteur"]].astype(str).str.lower().str.contains(search_prof)]
     for idx, r in mes_p.iterrows():
         c1, c2, c3 = st.columns([3, 1.5, 1])
         c1.write(f"**{r[COL['Titre']]}** ({r[COL['Emprunteur']]})")
         c2.write(f"{r[COL['Statut']]}")
         with c3:
             if st.button("🔄 Rendu", key=f"rendu_{idx}"):
-                sh_l, _ = get_sheets()
-                real_idx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
+                sh_l, _ = get_sheets(); real_idx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
                 sh_l.update_cell(real_idx, 5, "Libre"); sh_l.update_cell(real_idx, 6, ""); refresh()
 
     st.markdown('<div id="collection"></div>', unsafe_allow_html=True)
     st.write("### 📚 Ma collection")
     mes_c = df_livres[df_livres[COL["Proprio"]] == utilisateur]
+    if search_prof:
+        mes_c = mes_c[mes_c[COL["Titre"]].astype(str).str.lower().str.contains(search_prof) | 
+                      mes_c[COL["Auteur"]].astype(str).str.lower().str.contains(search_prof)]
     for idx, r in mes_c.iterrows():
         with st.expander(f"📙 {r[COL['Titre']]} - {r[COL['Auteur']]}"):
             if st.button("❌ Supprimer", key=f"del_{idx}"):
-                sh_l, _ = get_sheets()
-                # CORRECTION ICI : Conversion explicite en int()
-                real_idx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
-                sh_l.delete_rows(real_idx)
-                refresh()
+                sh_l, _ = get_sheets(); real_idx = int(df_livres.index[df_livres[COL['Titre']] == r[COL['Titre']]][0] + 2)
+                sh_l.delete_rows(real_idx); refresh()
 
     st.markdown('<div id="support"></div>', unsafe_allow_html=True)
     st.subheader("🛠️ Support")
-    msg_s = st.text_area("Votre message")
-    if st.button("📧 Envoyer Mail"):
-        st.link_button("Ouvrir Mail", generer_lien_mail("Support Méli-Mélo", f"De {utilisateur}: {msg_s}"))
+    msg_s = st.text_area("Bug ou Suggestion ?")
+    if st.button("📧 Envoyer Didier"):
+        st.link_button("Ouvrir Mail", generer_lien_mail("Méli-Mélo Support", f"De {utilisateur}: {msg_s}"))
 
 # --- 4. AJOUTER ---
 with onglets[3]:
@@ -176,27 +175,24 @@ with onglets[3]:
         t = st.text_input("Titre"); a = st.text_input("Auteur")
         cat = st.selectbox("Catégorie", LISTE_CATS)
         note = st.select_slider("Note", ["📚","📚📚","📚📚📚","📚📚📚📚"], value="📚📚📚")
-        avis = st.text_area("Mon avis")
+        avis = st.text_area("Avis")
         if st.form_submit_button("Valider"):
             if t and a:
                 sh_l, _ = get_sheets()
                 sh_l.append_row([t, a, utilisateur, avis, "Libre", "", note, datetime.now().strftime("%Y-%m-%d"), "", cat])
-                st.success("Ajouté !"); st.balloons()
+                st.success("Livre ajouté !"); st.balloons()
             else: st.warning("Titre et Auteur requis.")
 
-# --- 5. GÉRANCE ---
+# --- 5/6 GÉRANCE & AIDE ---
 with onglets[4]:
     if utilisateur in ["Didier", "Amélie"]:
         with st.form("new_mem"):
             nm = st.text_input("Prénom"); sm = st.text_input("Code")
             if st.form_submit_button("Créer"):
                 _, sh_m = get_sheets(); sh_m.append_row([nm, sm, "", "", "", ""]); refresh()
-    else: st.write("Réservé.")
 
-# --- 6. MODE D'EMPLOI ---
 with onglets[5]:
     st.title("📖 Aide")
-    st.write("Retrouvez ici toutes les infos pour utiliser l'application.")
-    st.info("Utilisez les onglets pour naviguer entre la bibliothèque et votre profil.")
+    st.info("Utilisez les onglets pour naviguer. En cas de souci, contactez Didier via l'onglet Profil.")
 
 st.caption("DJA’WEB avec l’aide de Gemini IA")
